@@ -1,0 +1,37 @@
+# Secrets / local configuration
+.env
+.env.*
+!.env.example
+
+# Python environment and caches
+.venv/
+venv/
+__pycache__/
+*.py[cod]
+*.egg-info/
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+
+# Test / coverage artifacts
+.coverage
+coverage.xml
+htmlcov/
+
+# Local logs and data (generated run logs live under logs/; the folder itself is kept)
+logs/*
+!logs/.gitkeep
+*.log
+*.db
+*.sqlite
+*.sqlite3
+*.bak
+
+# Editors / OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+
+# Local verification evidence
+phase2-evidence-backup/

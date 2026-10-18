@@ -1,0 +1,13 @@
+# Direct dependencies only. Pinned to versions verified to install together on
+# Python 3.10 and 3.12. LangGraph, MCP SDK, SQL Server drivers and VSL
+# packages are added in their own phases.
+# Phase 2: SQL Server access (pyodbc needs a Microsoft ODBC driver installed).
+openai==3.31.0
+pydantic==2.14.1
+pydantic-settings==2.15.0
+fastapi==0.143.2
+uvicorn==0.54.0
+pytest==9.1.1
+httpx==0.28.1
+sqlalchemy==2.0.54
+pyodbc==5.3.0
