@@ -62,12 +62,22 @@ independently.
 - It does **not require a DataMart**; SQL Server holds synthetic operational and
   pipeline-related tables only.
 
+## Phase 5 implementation (investigation agent)
+
+`app/agent/` is a LangGraph workflow (receive incident, plan, execute tools, evaluate, bounded loop, report) that
+reaches diagnostics only through the Phase 4 MCP server over stdio. OpenAI (strict JSON-schema output, no function
+calling) proposes tool calls and interpretation; code validates arguments against the discovered schemas, enforces
+budgets, takes facts from tool results, verifies every model claim against the evidence, computes the status and
+caps confidence. A deterministic offline engine stands in for the model for demos and tests. It cannot import the
+database, diagnostics or simulation code and has no write or recovery capability. Governance (Phase 6) is not
+part of it. See [agent.md](agent.md).
+
 ## Phase 4 implementation (MCP server)
 
 `app/mcp_server/` is a thin, read-only MCP adapter over `DiagnosticsService`: eight tools with typed, bounded
 inputs and structured outputs, served over stdio with the official Python MCP SDK. It contains no diagnostic
-logic, SQL, write or recovery capability, and makes no OpenAI call. The LangGraph agent and VSL governance
-remain later phases. See [mcp-server.md](mcp-server.md).
+logic, SQL, write or recovery capability, and makes no OpenAI call. Its client is the Phase 5 agent; VSL governance
+remains a later phase. See [mcp-server.md](mcp-server.md).
 
 ## Phase 3 implementation (diagnostic tools)
 

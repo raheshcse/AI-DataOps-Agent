@@ -154,3 +154,5 @@ from `pytest tests/integration -v -rs` with the gate set. Replace this paragraph
 * The known Phase 2 ingestion limitation (duplicate event ids inside one pending batch are inserted) is unchanged;
   the tools report its effects (see [diagnostics.md](diagnostics.md)).
 * Resources and prompts are not exposed; tools only.
+* The Phase 5 agent ([agent.md](agent.md)) is the first real client: it discovers these tools at runtime, calls only the
+  eight approved read-only ones and validates arguments against the published schemas before calling.

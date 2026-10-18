@@ -15,11 +15,13 @@ See [docs/architecture.md](docs/architecture.md) for the planned design and
 | 1 | Foundation: config, FastAPI `/health` + `/ready`, log redaction, tests | Done (you confirmed on Windows) |
 | 2 | Simulated operational environment: SQL Server schema, deterministic data, pipeline simulator, JSON Lines logs, six failure scenarios, guarded reset, read-only `/sim/*` endpoints | Done: you reported the SQL Server integration suite and baseline verification passed. `dataops_app` login and `/sim/*` endpoints remain unverified |
 | 3 | Read-only diagnostic tools returning structured evidence ([docs/diagnostics.md](docs/diagnostics.md)) | Done and committed (`6eda154`); you reported the SQL Server integration suite passed |
-| 4 | Custom read-only DataOps MCP server over the diagnostics ([docs/mcp-server.md](docs/mcp-server.md)) | **Implemented; awaiting your approval and local verification** |
-| 5+ | LangGraph + OpenAI agent, VSL governance, approval and recovery, persistence, final demo | **Not started** |
+| 4 | Custom read-only DataOps MCP server over the diagnostics ([docs/mcp-server.md](docs/mcp-server.md)) | Done and committed (`e3dd81d`); you reported 30 SQL Server integration tests passing |
+| 5 | LangGraph + OpenAI investigation agent over the MCP server ([docs/agent.md](docs/agent.md)) | **Implemented; awaiting your review.** Offline mode and all tests run without a key; **live OpenAI behaviour is unverified** |
+| 6+ | VSL governance, approval and recovery, persistence, final demo | **Not started** |
 
-**Not implemented yet:** LangGraph agent, VSL integration, OpenAI calls, automatic recovery. The
-application makes no OpenAI request.
+**Not implemented yet:** VSL integration, approval flow, automatic recovery. No OpenAI request has ever been
+made by this project; the agent's live mode exists but is unverified (see [docs/agent.md](docs/agent.md)). The
+web application itself makes no OpenAI request.
 
 ## Prerequisites
 
@@ -57,7 +59,7 @@ Invalid values make `/ready` report `not_ready` with the field names only; value
 
 | Variable | Default | Notes |
 |---|---|---|
-| `OPENAI_API_KEY` | *(none)* | Secret; blank = missing |
+| `OPENAI_API_KEY` | *(none)* | Secret; blank = missing. The Phase 5 agent also treats the `.env.example` placeholder as missing |
 | `OPENAI_MODEL` | `gpt-4o-mini` | Placeholder; confirm availability |
 | `APP_ENV` | `development` | `development` / `test` / `production` (`production` blocks the reset) |
 | `LOG_LEVEL` | `INFO` | `DEBUG` ... `CRITICAL` |
@@ -119,6 +121,17 @@ python -m app.mcp_server             # the server itself (stdio); an MCP client 
 
 See [docs/mcp-server.md](docs/mcp-server.md) for the tools, client configuration and limits.
 
+## Investigate an incident (Phase 5)
+
+```powershell
+python -m scripts.investigate --check-config                                  # key state; no network
+python -m scripts.investigate "Yesterday's orders are missing" --offline      # deterministic, no key, no cost
+python -m scripts.investigate "Yesterday's orders are missing"                # live OpenAI (needs a key; billable)
+```
+
+The agent reaches data only through the read-only MCP server. See [docs/agent.md](docs/agent.md) for the
+architecture, API-key setup, how to read reports and confidence, limitations and the manual checklist.
+
 ## Test
 
 ```powershell
@@ -141,7 +154,7 @@ See [docs/windows-setup.md](docs/windows-setup.md) section 6 for database errors
 
 ## Planned phases
 
-1. Foundation (done) 2. Simulated operational environment (done) 3. Diagnostic tools (implemented)
-4. Custom DataOps MCP server 5. LangGraph + OpenAI agent 6. VSL governance integration
+1. Foundation (done) 2. Simulated operational environment (done) 3. Diagnostic tools (done)
+4. Custom DataOps MCP server (done) 5. LangGraph + OpenAI agent (implemented) 6. VSL governance integration
 7. Human approval and controlled recovery 8. FastAPI, persistence and ticketing (GitHub Issues) 9. Testing and demonstration.
 Future enhancements (not started): cloud integrations, Streamlit dashboard, expanded MCP ecosystem, benchmarking and hardening.

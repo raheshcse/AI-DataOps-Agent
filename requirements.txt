@@ -1,5 +1,5 @@
 # Direct dependencies only. Pinned to versions verified to install together on
-# Python 3.10 and 3.12. LangGraph and VSL packages are added in their own phases.
+# Python 3.10 and 3.12. VSL packages are added in their own phase.
 # Phase 2: SQL Server access (pyodbc needs a Microsoft ODBC driver installed).
 openai==3.31.0
 pydantic==2.14.1
@@ -12,3 +12,5 @@ sqlalchemy==2.0.54
 pyodbc==5.3.0
 # Phase 4: official MCP Python SDK (2.x: MCPServer/Client). On Windows it also installs pywin32.
 mcp==2.3.0
+# Phase 5: LangGraph workflow for the investigation agent.
+langgraph==1.2.16
