@@ -1,14 +1,14 @@
 # Phase 3 - DataOps diagnostic tools
 
 Read-only tools that investigate the simulated operational environment and return **structured,
-evidence-based findings**. A later phase will expose them to an AI agent through MCP; in Phase 3 they are
-plain Python functions plus a CLI. Nothing here calls OpenAI, changes data, repairs anything or starts a
+evidence-based findings**. Phase 4 exposes them to an AI agent through a read-only MCP server
+([mcp-server.md](mcp-server.md)); they are also plain Python functions plus a CLI. Nothing here calls OpenAI, changes data, repairs anything or starts a
 pipeline.
 
 ## Architecture and data flow
 
 ```
-scripts/diagnose.py (CLI, prints JSON)         future: MCP tool wrappers (Phase 4)
+scripts/diagnose.py (CLI, prints JSON)         app/mcp_server (MCP tools, Phase 4)
             \                                      /
              v                                    v
       app/diagnostics/service.py  DiagnosticsService    <- the one public entry point

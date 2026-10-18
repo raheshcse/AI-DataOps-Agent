@@ -14,10 +14,11 @@ See [docs/architecture.md](docs/architecture.md) for the planned design and
 |---|---|---|
 | 1 | Foundation: config, FastAPI `/health` + `/ready`, log redaction, tests | Done (you confirmed on Windows) |
 | 2 | Simulated operational environment: SQL Server schema, deterministic data, pipeline simulator, JSON Lines logs, six failure scenarios, guarded reset, read-only `/sim/*` endpoints | Done: you reported the SQL Server integration suite and baseline verification passed. `dataops_app` login and `/sim/*` endpoints remain unverified |
-| 3 | Read-only diagnostic tools returning structured evidence ([docs/diagnostics.md](docs/diagnostics.md)) | **Implemented; awaiting your SQL Server verification** |
-| 4+ | MCP server, LangGraph + OpenAI agent, VSL governance, approval and recovery, persistence, final demo | **Not started** |
+| 3 | Read-only diagnostic tools returning structured evidence ([docs/diagnostics.md](docs/diagnostics.md)) | Done and committed (`6eda154`); you reported the SQL Server integration suite passed |
+| 4 | Custom read-only DataOps MCP server over the diagnostics ([docs/mcp-server.md](docs/mcp-server.md)) | **Implemented; awaiting your approval and local verification** |
+| 5+ | LangGraph + OpenAI agent, VSL governance, approval and recovery, persistence, final demo | **Not started** |
 
-**Not implemented yet:** MCP server, LangGraph agent, VSL integration, OpenAI calls, automatic recovery. The
+**Not implemented yet:** LangGraph agent, VSL integration, OpenAI calls, automatic recovery. The
 application makes no OpenAI request.
 
 ## Prerequisites
@@ -107,6 +108,16 @@ Typical first session: `check_prereqs` -> `db_init` -> `db_seed` -> `db_verify` 
 ```powershell
 python -m scripts.diagnose all --brief      # read-only; see docs/diagnostics.md for every tool
 ```
+
+## Run the MCP server (Phase 4)
+
+```powershell
+python -m scripts.mcp_check --list   # starts the server over stdio and lists its 8 read-only tools (no database)
+python -m scripts.mcp_check          # also runs run_all_diagnostics against your configured database (read-only)
+python -m app.mcp_server             # the server itself (stdio); an MCP client normally launches it
+```
+
+See [docs/mcp-server.md](docs/mcp-server.md) for the tools, client configuration and limits.
 
 ## Test
 

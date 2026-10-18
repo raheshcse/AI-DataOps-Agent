@@ -62,12 +62,19 @@ independently.
 - It does **not require a DataMart**; SQL Server holds synthetic operational and
   pipeline-related tables only.
 
+## Phase 4 implementation (MCP server)
+
+`app/mcp_server/` is a thin, read-only MCP adapter over `DiagnosticsService`: eight tools with typed, bounded
+inputs and structured outputs, served over stdio with the official Python MCP SDK. It contains no diagnostic
+logic, SQL, write or recovery capability, and makes no OpenAI call. The LangGraph agent and VSL governance
+remain later phases. See [mcp-server.md](mcp-server.md).
+
 ## Phase 3 implementation (diagnostic tools)
 
 `app/diagnostics/` holds read-only tools (pipeline status, log inspection, duplicates, data quality,
 freshness, record-count reconciliation, schema contract) that return a common structured
 `DiagnosticResult`. They reuse the Phase 2 validators, clock, log store and repository interface through a
-`ReadOnlyRepo`, and are exposed only by `scripts/diagnose.py` for now. The MCP wrappers, LangGraph agent,
+`ReadOnlyRepo`, and are exposed by `scripts/diagnose.py` and (Phase 4) the MCP server. The LangGraph agent,
 VSL governance and any recovery action remain later phases. See [diagnostics.md](diagnostics.md).
 
 ## Phase 2 implementation (simulated operational environment)
