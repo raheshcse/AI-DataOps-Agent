@@ -12,11 +12,11 @@ import re
 from pathlib import Path
 from typing import Any
 
-_SAFE = re.compile(r"^[A-Za-z0-9][A-Za-z0-9_.-]{0,80}$")
+_SAFE = re.compile(r"[A-Za-z0-9][A-Za-z0-9_.-]{0,80}")
 
 
 def _safe(name: str) -> str:
-    if not _SAFE.match(name) or ".." in name:
+    if not _SAFE.fullmatch(name) or ".." in name:
         raise ValueError("Invalid identifier for a log path.")
     return name
 

@@ -9,8 +9,10 @@
     python -m scripts.diagnose schema [--table stg_order_feed|fx_order_feed_drifted]
     python -m scripts.diagnose all [--batch-date 2026-01-14]
 
-Add --brief for one line per result. Nothing is ever modified. The JSON goes to stdout and
-the connection target to stderr, so `... | ConvertFrom-Json` works.
+Add --brief (before or after the tool name) for one line per result. Nothing is ever modified.
+In JSON mode the JSON goes to stdout and the connection target to stderr, so
+`... | ConvertFrom-Json` works; in --brief mode the target line is printed on stdout too, so
+nothing is written to stderr (PowerShell 5.1 shows stderr as an error with 2>&1).
 Exit codes: 0 ok/warning, 1 issue detected, 2 the diagnostic could not run.
 """
 
@@ -28,9 +30,12 @@ from app.simulation.runlog import RunLogStore
 from scripts._common import EXIT_CHECK_FAILED, EXIT_ENV, EXIT_OK, load_settings, log_dir, print_target, run_cli
 
 
-def build_service() -> DiagnosticsService:
+def build_service(brief: bool = False) -> DiagnosticsService:
     settings = load_settings()
-    print_target_stderr(settings)
+    if brief:
+        print_target(settings)
+    else:
+        print_target_stderr(settings)
     engine = make_engine(settings)  # the normal (non-admin) connection; diagnostics only read
     return DiagnosticsService(SqlRepository(engine), RunLogStore(log_dir(settings)),
                               settings.freshness_threshold_minutes)
@@ -50,26 +55,38 @@ def exit_code(results: list[DiagnosticResult]) -> int:
     return EXIT_CHECK_FAILED if any(r.status == "issue_detected" for r in results) else EXIT_OK
 
 
-def main() -> int:
+def build_parser() -> argparse.ArgumentParser:
     parser = argparse.ArgumentParser(description=__doc__.splitlines()[0])
     parser.add_argument("--brief", action="store_true", help="one line per result instead of JSON")
     sub = parser.add_subparsers(dest="tool", required=True)
-    p = sub.add_parser("status")
+
+    def add(name: str) -> argparse.ArgumentParser:
+        sp = sub.add_parser(name)
+        # SUPPRESS keeps `--brief all` working: the subparser must not overwrite the parent's value.
+        sp.add_argument("--brief", action="store_true", default=argparse.SUPPRESS,
+                        help="one line per result instead of JSON")
+        return sp
+
+    p = add("status")
     p.add_argument("--pipeline")
     p.add_argument("--status", dest="status_filter")
     p.add_argument("--limit", type=int, default=10)
-    p = sub.add_parser("logs")
+    p = add("logs")
     p.add_argument("run_id")
     p.add_argument("--max-events", type=int, default=200)
-    sub.add_parser("duplicates")
-    sub.add_parser("quality")
-    sub.add_parser("freshness").add_argument("--pipeline", default="order_ingestion")
-    sub.add_parser("reconcile").add_argument("--batch-date")
-    sub.add_parser("schema").add_argument("--table")
-    sub.add_parser("all").add_argument("--batch-date")
-    args = parser.parse_args()
+    add("duplicates")
+    add("quality")
+    add("freshness").add_argument("--pipeline", default="order_ingestion")
+    add("reconcile").add_argument("--batch-date")
+    add("schema").add_argument("--table")
+    add("all").add_argument("--batch-date")
+    return parser
 
-    service = build_service()
+
+def main(argv: list[str] | None = None) -> int:
+    args = build_parser().parse_args(argv)
+
+    service = build_service(args.brief)
     if args.tool == "all":
         report: DiagnosticReport = service.run_all(args.batch_date)
         results, payload = report.results, report.to_dict()

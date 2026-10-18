@@ -8,7 +8,7 @@ reported as information, not as a processing failure.
 
 from __future__ import annotations
 
-from datetime import date
+from datetime import date, datetime
 from typing import Any
 
 from app.diagnostics.models import (
@@ -53,6 +53,8 @@ def reconcile_record_counts(repo, logs: RunLogStore, state: dict[str, Any], batc
     check_pipeline_id(pipeline_id)
     if batch_date is None:
         batch = state["current_batch_date"]
+    elif isinstance(batch_date, datetime):
+        raise InvalidInput("batch_date must be a date such as 2026-01-14, not a date-time.")
     elif isinstance(batch_date, date):
         batch = batch_date
     else:

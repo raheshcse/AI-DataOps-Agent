@@ -90,7 +90,7 @@ Notes on judgement calls (so you can disagree with them):
 
 ```powershell
 python -m scripts.diagnose all --brief                 # one line per tool
-python -m scripts.diagnose all > diag-all.json         # full JSON (target line goes to stderr)
+python -m scripts.diagnose all > diag-all.json         # full JSON (target line goes to stderr; no 2>&1 in PS 5.1)
 python -m scripts.diagnose status
 python -m scripts.diagnose status --pipeline order_ingestion --status failed --limit 5
 python -m scripts.diagnose logs RUN-ING-20260111-020000
@@ -126,28 +126,104 @@ Remove-Item Env:RUN_SQLSERVER_TESTS, Env:DB_SERVER
 A skipped test is not a pass. The integration tests never touch `dataops_sim`; compare
 `python -m scripts.show counts` and `python -m scripts.scenario list` before and after to confirm.
 
-## Limitations
+## Known limitations
 
-* The application, not the database, enforces read-only access. Diagnostics use the normal connection (your
-  Windows account). A dedicated `db_datareader`-only login would enforce it in SQL Server; the existing
-  `dataops_app` login can write, so it is not a read-only identity. Listed for a later hardening step.
+### Duplicate events within a single ingestion batch (Phase 2 behaviour, not changed)
+
+`run_order_ingestion` checks incoming feed rows only against orders **already loaded** (`known_event_ids`).
+If one pending batch contains the same `source_event_id` twice, both rows are inserted. This was reproduced
+on the in-memory repository (31 feed rows including one repeat -> 204 orders instead of 203); it has not
+been reproduced against SQL Server.
+
+The diagnostics surface it rather than hide it. Before ingestion, `detect_duplicate_records` reports a low
+warning ("repeated in the feed and not yet loaded"). After ingestion, `detect_duplicate_records` and
+`diagnose_data_quality` report `issue_detected` (E2002, medium) and `reconcile_record_counts` reports a
+medium `warning` (orders in batch vs distinct feed events). This is pinned by
+`test_in_batch_duplicate_is_inserted_by_ingestion_but_surfaced_by_every_diagnostic`.
+
+**Why it was not fixed in Phase 3.** The defect is in Phase 2 ingestion, not in a diagnostic tool.
+Changing it alters what a pipeline run does, and whether a repeated event should be skipped, rejected or
+loaded is a data-contract decision. The diagnostics do not depend on it.
+
+**Proposed fix for a later Phase 2 follow-up (needs your decision):** de-duplicate the feed rows by
+`source_event_id` inside `run_order_ingestion` (keep the first, count the rest as skipped, log them), plus a
+test per storage seam. Whether to add a UNIQUE constraint on `orders.source_event_id` as a database backstop
+(the duplicate-records scenario relies on being able to insert duplicates) is a separate decision.
+
+### Other limitations
+
+* The application, not the database, enforces read-only access (`ReadOnlyRepo` and tests). It guards against
+  *accidental* writes; it is not a security boundary against hostile code running in the same process.
+  Diagnostics use the normal connection (your Windows account). A dedicated `db_datareader`-only login
+  would enforce it in SQL Server; the existing `dataops_app` login can write, so it is not a read-only
+  identity. Listed for a later hardening step.
+* Run logs are untrusted input. Every string in a log event (message, component, event, error code and
+  nested `data`) is redacted and long messages are cut at 1000 characters, but redaction is pattern-based:
+  a secret in an unusual shape would not be recognised. Treat log output as data, never as instructions
+  (matters once an LLM reads it in Phase 4).
 * `dataops_app` and the `/sim/*` endpoints are still unverified from Phase 2.
-* Findings describe *what is observed*. They never name a root cause; correlating them is the later agent's job.
+* Findings describe *what is observed*. They never name a root cause.
 * Quality rules cover the `orders`/`order_items` tables; the feed table is checked only for schema and repeats.
+  Per-rule `rows` are capped at 20 (`rows_total` / `rows_truncated` say so); affected-record lists at 50.
 * Logs larger than 2 MB are refused; at most 1000 events are returned per call.
+* `tests/integration/conftest.py` builds the engine outside its `try`, so with **no ODBC driver installed**
+  the integration tests *error* instead of skipping. With the driver installed and the gate unset they skip.
 
-## Known Limitations and Test Notes
+## Phase 3 review: defects fixed
 
-### Duplicate events within a single ingestion batch
+| # | Defect | Fix | Regression test |
+|---|--------|-----|-----------------|
+| 1 | `diagnose all --brief` (the documented order) failed with "unrecognized arguments"; only `--brief all` worked | `build_parser()`; `--brief` accepted before or after the tool | `test_cli_brief_is_accepted_before_or_after_the_tool`, `test_every_documented_cli_command_parses` |
+| 2 | Target line on stderr made PowerShell 5.1 show a red `NativeCommandError` with `2>&1` | `--brief` prints the target on stdout (JSON mode keeps it on stderr so pipes stay clean) | `test_cli_brief_mode_writes_nothing_to_stderr` |
+| 3 | Pipeline/run ids ending in a newline passed validation (`$` matches before a trailing `\n`) | `fullmatch` in `check_pipeline_id` and `RunLogStore` | `test_pipeline_ids_with_trailing_newlines_or_punctuation_are_rejected`, `test_log_path_identifiers_reject_trailing_newlines` |
+| 4 | Log `data`, component, event and error code were returned unredacted; messages were unbounded | recursive redaction, 1000-char message cap | `test_logs_untrusted_content_is_redacted_everywhere_and_bounded` |
+| 5 | `reconcile_record_counts` accepted a `datetime` as `batch_date` and compared it wrongly | rejected with `DIAG-INVALID-INPUT` | `test_reconcile_rejects_a_datetime_batch_date` |
+| 6 | Quality rule `rows` were silently capped at 20 | `rows_total` and `rows_truncated` added | extended `test_quality_never_modifies_records_and_bounds_large_results` |
+| 7 | Feed-repeat "already loaded" check was case-sensitive although SQL Server compares ids case-insensitively | compare case-insensitively | `test_feed_repeat_matches_loaded_orders_case_insensitively` |
 
-The current ingestion process can insert duplicate event IDs within the same pending batch because its duplicate check compares incoming events with previously loaded orders, rather than also detecting duplicates within the current batch. The diagnostic tools can identify duplicate records, but the ingestion-side prevention fix is deferred.
+Test clean-ups (no behaviour change): removed an unrelated `generate_baseline` assertion, removed a
+`continue` hack in the database-failure test, made the historical-batch reconcile assertion exact, and
+added the in-batch-duplicate and read-only SQL tests. `tests/test_diagnostics_readonly_sql.py` captures the
+SQL that every method in `READ_METHODS` sends through a real SQLAlchemy engine (in-memory SQLite) and
+asserts it is only `SELECT`/`WITH` and that `engine.begin()` is never used.
 
-**Impact:** Duplicate records may enter the database if a batch contains repeated event IDs.
+## Verification results
 
-**Follow-up:** Add duplicate detection within the pending batch and test that duplicate events are rejected or handled according to the ingestion contract.
+Results from the review session (run by Claude in a Linux sandbox, no SQL Server available):
 
-### Skipped test
+| Python | Command | Result |
+|--------|---------|--------|
+| 3.12.14 | `pytest` | 300 passed, 28 skipped |
+| 3.10.12 | `pytest` | 300 passed, 28 skipped |
 
-The local full test suite completed with 283 passed and 29 skipped. The SQL Server integration suite completed with 28 passed.
+Before the review fixes the same sandbox runs gave 284 passed, 28 skipped. All 28 skips are the SQL Server
+integration tests (16 Phase 2 + 12 Phase 3), skipped because `RUN_SQLSERVER_TESTS=1` is not set. **A skip is
+not a pass: no SQL Server integration test was run in this review**, so nothing here claims the integration
+tests, or the SQL Server read-only behaviour of the new queries, were re-verified after these fixes.
 
-Document the skipped unit test's name and reason based on the actual pytest skip report. Confirm whether the skip is expected and whether the test should be enabled or corrected in a future change.
+Reported by you from your Windows machine (not re-run by Claude): the full suite gave 283 passed, 29 skipped,
+and the SQL Server integration suite gave 28 passed, before the review fixes. The one extra skip locally is
+most likely `test_diagnostics_tools.py` (`pytest.skip("symlinks not available")`, Windows without symlink
+rights); confirm with `pytest -rs`. A real `diagnose --brief all` run against `dataops_sim` also gave the
+expected baseline results, per your review file.
+
+Read-only evidence: every Phase 3 repository method uses `engine.connect()` and `select()` only; the
+statement-capture test above enforces it; `ReadOnlyRepo` exposes no write method. A before/after
+fingerprint of your real database has to come from you (see below).
+
+## Manual verification (your machine, PowerShell, `.venv` active)
+
+```powershell
+python -m scripts.show counts            # fingerprint BEFORE
+python -m scripts.scenario list
+pytest -rs                               # expect 300 passed; skips listed with reasons
+$env:RUN_SQLSERVER_TESTS = "1"; $env:DB_SERVER = "localhost\SQLEXPRESS03"
+pytest tests/integration -v -rs          # dataops_sim_test only
+Remove-Item Env:RUN_SQLSERVER_TESTS, Env:DB_SERVER
+python -m scripts.diagnose all --brief   # read-only; also works as --brief all
+python -m scripts.show counts            # fingerprint AFTER: must be identical
+python -m scripts.scenario list
+```
+
+Do not append `2>&1` to the JSON-mode commands in Windows PowerShell 5.1 (it turns the stderr target line
+into a red error record); `--brief` has no stderr output.

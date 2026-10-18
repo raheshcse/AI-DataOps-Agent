@@ -151,10 +151,7 @@ def test_database_failure_is_reported_without_driver_details(dx, repo, monkeypat
     monkeypatch.setattr(repo, "list_runs", boom)
     monkeypatch.setattr(repo, "order_total_mismatches", boom)
     monkeypatch.setattr(repo, "duplicate_order_details", boom)
-    for r in [dx.get_pipeline_status(), dx.diagnose_data_quality(), dx.detect_duplicate_records(),
-              dx.check_data_freshness()]:
-        if r.diagnostic_name == "check_data_freshness":
-            continue  # latest_successful_run is not patched; it does not hit the failing call
+    for r in [dx.get_pipeline_status(), dx.diagnose_data_quality(), dx.detect_duplicate_records()]:
         assert (r.status, r.error_code) == ("error", "DIAG-DB-ERROR"), r.diagnostic_name
         assert "SECRETHOST" not in json.dumps(r.to_dict()) and "Login failed" not in json.dumps(r.to_dict())
         assert "prereqs" in r.recommended_next_step
@@ -245,9 +242,8 @@ def test_cli_exit_codes_and_import():
 def test_cli_prints_one_json_result_per_tool(dx, monkeypatch, capsys, argv, expect_name):
     import scripts.diagnose as cli
 
-    monkeypatch.setattr(cli, "build_service", lambda: dx)
-    monkeypatch.setattr("sys.argv", ["diagnose", *argv])
-    code = cli.main()
+    monkeypatch.setattr(cli, "build_service", lambda brief=False: dx)
+    code = cli.main(argv)
     out = json.loads(capsys.readouterr().out)
     assert out["diagnostic_name"] == expect_name and set(out) == RESULT_KEYS
     assert code == (1 if out["status"] == "issue_detected" else 2 if out["status"] == "error" else 0)
@@ -258,27 +254,70 @@ def test_cli_logs_all_and_brief_output(dx, service, monkeypatch, capsys):
 
     service.activate("pipeline-failure")
     run_id = service.run_pipeline("order_ingestion")["run"]["run_id"]
-    monkeypatch.setattr(cli, "build_service", lambda: dx)
+    monkeypatch.setattr(cli, "build_service", lambda brief=False: dx)
 
-    monkeypatch.setattr("sys.argv", ["diagnose", "logs", run_id, "--max-events", "5"])
-    assert cli.main() == 1
+    assert cli.main(["logs", run_id, "--max-events", "5"]) == 1
     assert json.loads(capsys.readouterr().out)["error_code"] == "E1001"
 
-    monkeypatch.setattr("sys.argv", ["diagnose", "all"])
-    assert cli.main() == 1
+    assert cli.main(["all"]) == 1
     report = json.loads(capsys.readouterr().out)
     assert report["overall_status"] == "issue_detected" and len(report["results"]) == 7
 
-    monkeypatch.setattr("sys.argv", ["diagnose", "--brief", "all"])
-    assert cli.main() == 1
-    lines = capsys.readouterr().out.strip().splitlines()
-    assert len(lines) == 7 and lines[0].startswith("[issue_detected/high] get_pipeline_status:")
+    for argv in (["--brief", "all"], ["all", "--brief"]):  # the documented order is the second one
+        assert cli.main(argv) == 1
+        lines = capsys.readouterr().out.strip().splitlines()
+        assert len(lines) == 7 and lines[0].startswith("[issue_detected/high] get_pipeline_status:")
+
+
+@pytest.mark.parametrize("argv", [["status", "--brief"], ["--brief", "status"], ["freshness", "--pipeline",
+                                  "order_ingestion", "--brief"], ["logs", "RUN", "--brief"]])
+def test_cli_brief_is_accepted_before_or_after_the_tool(argv):
+    import scripts.diagnose as cli
+
+    assert cli.build_parser().parse_args(argv).brief is True
+    assert cli.build_parser().parse_args([a for a in argv if a != "--brief"]).brief is False
+
+
+def test_cli_brief_mode_writes_nothing_to_stderr(dx, monkeypatch, capsys):
+    import scripts.diagnose as cli
+
+    settings = type("S", (), {"freshness_threshold_minutes": 1500})()
+    monkeypatch.setattr(cli, "load_settings", lambda: settings)
+    monkeypatch.setattr(cli, "print_target", lambda s: print("Target: test"))
+    monkeypatch.setattr(cli, "make_engine", lambda s: None)
+    monkeypatch.setattr(cli, "SqlRepository", lambda e: dx.repo)
+    monkeypatch.setattr(cli, "log_dir", lambda s: dx.logs.root.parent)
+    cli.main(["quality", "--brief"])
+    captured = capsys.readouterr()
+    assert captured.err == "" and captured.out.startswith("Target: test")
+    cli.main(["quality"])  # JSON mode: target on stderr, pure JSON on stdout
+    captured = capsys.readouterr()
+    assert "Target: test" in captured.err and json.loads(captured.out)["diagnostic_name"] == "diagnose_data_quality"
+
+
+def test_every_documented_cli_command_parses():
+    import re
+    import shlex
+    from pathlib import Path
+
+    import scripts.diagnose as cli
+
+    root = Path(__file__).resolve().parents[1]
+    found = 0
+    for doc in (root / "README.md", root / "docs" / "diagnostics.md", root / "docs" / "architecture.md"):
+        for line in doc.read_text(encoding="utf-8").splitlines():
+            m = re.search(r"python -m scripts\.diagnose\s+(.*?)(?:\s+#.*)?$", line)
+            if not m or "[" in m.group(1) or "RUN_ID" in m.group(1):
+                continue
+            command = re.split(r"\s[>|]", m.group(1).replace("`", ""))[0]  # drop shell redirects / pipes
+            cli.build_parser().parse_args(shlex.split(command))
+            found += 1
+    assert found >= 4
 
 
 def test_cli_invalid_input_exits_2_without_a_traceback(dx, monkeypatch, capsys):
     import scripts.diagnose as cli
 
-    monkeypatch.setattr(cli, "build_service", lambda: dx)
-    monkeypatch.setattr("sys.argv", ["diagnose", "logs", "../../etc/passwd"])
-    assert cli.main() == 2
+    monkeypatch.setattr(cli, "build_service", lambda brief=False: dx)
+    assert cli.main(["logs", "../../etc/passwd"]) == 2
     assert json.loads(capsys.readouterr().out)["error_code"] == "DIAG-INVALID-INPUT"

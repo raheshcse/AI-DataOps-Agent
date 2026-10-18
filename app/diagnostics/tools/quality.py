@@ -43,7 +43,8 @@ def _finding(rule: str, outcome: str, severity: str, affected: list[str], observ
     return {"type": "rule_result", "rule_name": rule, "outcome": outcome,
             "severity": severity if outcome != "pass" else "info", "affected_records": refs,
             "observed_value": observed, "expected_condition": expected, "detail": detail,
-            "rows": rows[:20], "notes": notes}
+            "rows": rows[:20], "rows_total": len(rows), "rows_truncated": len(rows) > 20,
+            "notes": notes}
 
 
 def diagnose_data_quality(repo, now) -> DiagnosticResult:

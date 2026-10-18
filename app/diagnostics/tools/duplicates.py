@@ -36,7 +36,8 @@ def detect_duplicate_records(repo) -> DiagnosticResult:
     feed_pending = []
     if feed_groups:
         loaded = repo.known_event_ids([g["source_event_id"] for g in feed_groups])
-        feed_pending = [g for g in feed_groups if g["source_event_id"] not in loaded]
+        loaded_ci = {str(e).casefold() for e in loaded}  # SQL Server compares ids case-insensitively
+        feed_pending = [g for g in feed_groups if str(g["source_event_id"]).casefold() not in loaded_ci]
 
     evidence: list[dict[str, Any]] = [{
         "type": "key_definition", "key": "orders.source_event_id",

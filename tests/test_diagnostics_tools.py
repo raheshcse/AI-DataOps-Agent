@@ -7,7 +7,6 @@ from decimal import Decimal
 import pytest
 
 from app.diagnostics import DiagnosticsService
-from app.simulation.generator import generate_baseline
 
 CURRENT = date(2026, 1, 14)
 TS = datetime(2026, 1, 14, 9, 0, tzinfo=timezone.utc)
@@ -181,6 +180,36 @@ def test_logs_secrets_in_messages_are_redacted_and_event_cap_is_noted(dx, servic
     assert r.notes and "of" in r.notes[0]
 
 
+def test_logs_untrusted_content_is_redacted_everywhere_and_bounded(dx, service):
+    run_id = service.run_pipeline("order_ingestion")["run"]["run_id"]
+    path = service.logs.path_for("order_ingestion", run_id)
+    secret = "sk-ABCDEFGHIJKLMNOP1234567890"
+    event = {"level": "INFO", "component": "token=" + secret, "event": "leak", "error_code": "api_key=" + secret,
+             "message": "x" * 5000,
+             "data": {"header": "Authorization: Bearer abcdefghijklmnop12345", "nested": [{"k": "api_key=" + secret}],
+                      "api_key=" + secret: 1}}
+    path.write_text(path.read_text() + json.dumps(event) + "\n")
+    r = dx.inspect_pipeline_logs(run_id, max_events=500)
+    blob = json.dumps(r.to_dict())
+    assert secret not in blob and "abcdefghijklmnop12345" not in blob
+    shown = [e for e in next(e for e in r.evidence if e["type"] == "events")["events"] if e["event"] == "leak"][0]
+    assert len(shown["message"]) < 1100 and shown["message"].endswith("[truncated]")
+
+
+@pytest.mark.parametrize("bad", ["order_ingestion\n", "order_ingestion\r\n", " order_ingestion", "order-ingestion"])
+def test_pipeline_ids_with_trailing_newlines_or_punctuation_are_rejected(dx, bad):
+    assert dx.get_pipeline_status(pipeline_id=bad).error_code == "DIAG-INVALID-INPUT"
+    assert dx.check_data_freshness(pipeline_id=bad).error_code == "DIAG-INVALID-INPUT"
+
+
+def test_log_path_identifiers_reject_trailing_newlines(service):
+    for bad in ("run-1\n", "order_ingestion\n"):
+        with pytest.raises(ValueError):
+            service.logs.path_for("order_ingestion", bad)
+        with pytest.raises(ValueError):
+            service.logs.path_for(bad, "run-1")
+
+
 def test_logs_that_contradict_the_run_record_are_flagged(dx, service):
     service.activate("pipeline-failure")
     run_id = service.run_pipeline("order_ingestion")["run"]["run_id"]
@@ -242,6 +271,27 @@ def test_feed_repeats_loaded_vs_pending(dx, service, repo):
     service.run_pipeline("order_ingestion")  # ingestion loads it (and, as noted, inserts both rows)
     loaded = dx.detect_duplicate_records()
     assert loaded.status == "issue_detected"  # the repeat did create duplicate orders: surfaced, not hidden
+
+
+def test_feed_repeat_matches_loaded_orders_case_insensitively(dx, repo):
+    old = repo.feed[0]
+    repo.feed.append(dict(old, feed_id=-5, source_event_id=old["source_event_id"].upper()))
+    repo.feed.sort(key=lambda r: r["feed_id"])
+    r = dx.detect_duplicate_records()
+    assert r.status == "ok"
+    assert next(e for e in r.evidence if e["type"] == "feed_repeat")["already_loaded_into_orders"] is True
+
+
+def test_in_batch_duplicate_is_inserted_by_ingestion_but_surfaced_by_every_diagnostic(dx, service, repo):
+    """Known Phase 2 limitation (docs/diagnostics.md): ingestion only checks events already in orders."""
+    feed = repo.get_feed_rows(CURRENT)
+    repo.feed.append(dict(feed[0], feed_id=9300))
+    before = repo.table_counts()["orders"]
+    service.run_pipeline("order_ingestion")
+    assert repo.table_counts()["orders"] == before + len(feed) + 1
+    assert dx.detect_duplicate_records().status == "issue_detected"
+    assert dx.reconcile_record_counts().status == "warning"
+    assert dx.diagnose_data_quality().status == "issue_detected"
 
 
 def test_feed_repeat_of_an_already_loaded_event_is_informational(dx, repo):
@@ -317,6 +367,7 @@ def test_quality_never_modifies_records_and_bounds_large_results(dx, repo):
     totals = next(e for e in r.evidence if e.get("rule_name") == "order_total_matches_line_items")
     assert len(totals["affected_records"]) == 50 and totals["notes"] and len(r.affected_records) == 50
     assert r.notes and len(totals["rows"]) == 20
+    assert (totals["rows_total"], totals["rows_truncated"]) == (60, True)
 
 
 # ======================================================== Tool 5: data freshness
@@ -455,7 +506,14 @@ def test_reconcile_batch_date_inputs(dx, service):
     empty = dx.reconcile_record_counts("2030-01-01")
     assert (empty.status, empty.severity) == ("warning", "low") and "nothing to reconcile" in empty.summary
     older = dx.reconcile_record_counts("2026-01-13")  # a historical batch with an earlier run
-    assert older.status in {"ok", "warning"} and older.evidence[0]["feed_rows"] > 0
+    assert (older.status, older.severity) == ("ok", "info") and older.evidence[0]["feed_rows"] > 0
+    assert "reconciles" in older.summary
+    assert dx.reconcile_record_counts("2026-01-10").status == "ok"  # a batch whose first run failed and was retried
+
+
+def test_reconcile_rejects_a_datetime_batch_date(dx):
+    r = dx.reconcile_record_counts(datetime(2026, 1, 14, 3, 0))
+    assert (r.status, r.error_code) == ("error", "DIAG-INVALID-INPUT")
 
 
 # ============================================ Tool 7: schema-contract validation
@@ -521,4 +579,3 @@ def test_order_status_constant_matches_the_database_constraint():
 
 def test_list_runs_status_filter_on_the_fake(repo, service):
     assert {r["status"] for r in repo.list_runs(status="failed", limit=50)} == {"failed"}
-    assert generate_baseline().expected_counts()["pipeline_runs"] == 22

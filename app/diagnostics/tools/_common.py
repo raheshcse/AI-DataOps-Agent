@@ -10,8 +10,9 @@ from typing import Any
 from app.core.logging import redact
 from app.diagnostics.models import InvalidInput
 
-PIPELINE_ID_RE = re.compile(r"^[A-Za-z0-9_]{1,50}$")
+PIPELINE_ID_RE = re.compile(r"[A-Za-z0-9_]{1,50}")
 MAX_LOG_BYTES = 2_000_000
+MAX_MESSAGE_CHARS = 1000
 
 
 class LogTooLarge(Exception):
@@ -19,7 +20,7 @@ class LogTooLarge(Exception):
 
 
 def check_pipeline_id(value: Any) -> str:
-    if not isinstance(value, str) or not PIPELINE_ID_RE.match(value):
+    if not isinstance(value, str) or not PIPELINE_ID_RE.fullmatch(value):
         raise InvalidInput("pipeline_id must be 1-50 letters, digits or underscores.")
     return value
 
@@ -34,6 +35,26 @@ def run_view(run: dict[str, Any] | None) -> dict[str, Any] | None:
     return {k: run.get(k) for k in keys}
 
 
+def _clean(value: Any, depth: int = 0) -> Any:
+    """Redact every string inside a log value. Log content is untrusted input."""
+    if isinstance(value, str):
+        return redact(value)
+    if depth >= 6:
+        return "[truncated]"
+    if isinstance(value, dict):
+        return {redact(str(k)): _clean(v, depth + 1) for k, v in value.items()}
+    if isinstance(value, (list, tuple)):
+        return [_clean(v, depth + 1) for v in value]
+    return value
+
+
+def _text(value: Any, limit: int = MAX_MESSAGE_CHARS) -> str | None:
+    if value is None:
+        return None
+    text = redact(str(value))
+    return text if len(text) <= limit else text[:limit] + "...[truncated]"
+
+
 def event_view(line_no: int, obj: dict[str, Any]) -> dict[str, Any]:
     level = obj.get("level")
     message = obj.get("message")
@@ -42,11 +63,11 @@ def event_view(line_no: int, obj: dict[str, Any]) -> dict[str, Any]:
         "line": line_no,
         "timestamp": obj.get("timestamp"),
         "severity": str(level).upper() if level is not None else None,
-        "component": obj.get("component"),
-        "event": obj.get("event"),
-        "message": redact(str(message)) if message is not None else None,
-        "error_code": obj.get("error_code"),
-        "data": data if isinstance(data, dict) else None,
+        "component": _text(obj.get("component"), 100),
+        "event": _text(obj.get("event"), 100),
+        "message": _text(message),
+        "error_code": _text(obj.get("error_code"), 100),
+        "data": _clean(data) if isinstance(data, dict) else None,
     }
 
 
