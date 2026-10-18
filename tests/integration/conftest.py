@@ -71,3 +71,11 @@ def svc(engine, sql_settings, tmp_path):
     service.repo.wipe()
     service.seed()
     return service
+
+
+@pytest.fixture
+def dx(svc):
+    """Diagnostics over the same freshly seeded *_test database (overrides the in-memory fixture)."""
+    from app.diagnostics import DiagnosticsService
+
+    return DiagnosticsService(svc.repo, svc.logs, svc.threshold)

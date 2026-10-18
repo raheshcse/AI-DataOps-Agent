@@ -39,6 +39,16 @@ class RunLogStore:
                 fh.write(json.dumps(event, sort_keys=True, default=str) + "\n")
         return path
 
+    def locate(self, run_id: str) -> Path | None:
+        """The existing log file for ``run_id`` (any pipeline), or None. Never leaves the log root."""
+        _safe(run_id)
+        root = self.root.resolve()
+        for candidate in sorted(self.root.glob(f"*/{run_id}.jsonl")):
+            resolved = candidate.resolve()
+            if resolved.is_file() and resolved.is_relative_to(root):
+                return candidate
+        return None
+
     def read(self, run_id: str) -> list[dict[str, Any]]:
         _safe(run_id)
         for candidate in sorted(self.root.glob(f"*/{run_id}.jsonl")):

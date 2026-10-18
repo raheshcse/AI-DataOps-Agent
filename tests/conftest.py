@@ -61,6 +61,14 @@ def repo():
 
 
 @pytest.fixture
+def dx(service):
+    """DiagnosticsService over the same seeded in-memory repo and log directory as ``service``."""
+    from app.diagnostics import DiagnosticsService
+
+    return DiagnosticsService(service.repo, service.logs, service.threshold)
+
+
+@pytest.fixture
 def service(repo, tmp_path):
     """A seeded SimulationService on the in-memory repository, logging under tmp_path."""
     from app.simulation.runlog import RunLogStore

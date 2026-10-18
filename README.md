@@ -13,11 +13,12 @@ See [docs/architecture.md](docs/architecture.md) for the planned design and
 | Phase | Scope | State |
 |---|---|---|
 | 1 | Foundation: config, FastAPI `/health` + `/ready`, log redaction, tests | Done (you confirmed on Windows) |
-| 2 | Simulated operational environment: SQL Server schema, deterministic data, pipeline simulator, JSON Lines logs, six failure scenarios, guarded reset, read-only `/sim/*` endpoints | **Implemented; awaiting your SQL Server verification** ([exercises](docs/learning-exercises.md)) |
-| 3+ | Diagnostic tools, MCP server, LangGraph + OpenAI agent, VSL governance, approval and recovery, persistence, final demo | **Not started** |
+| 2 | Simulated operational environment: SQL Server schema, deterministic data, pipeline simulator, JSON Lines logs, six failure scenarios, guarded reset, read-only `/sim/*` endpoints | Done: you reported the SQL Server integration suite and baseline verification passed. `dataops_app` login and `/sim/*` endpoints remain unverified |
+| 3 | Read-only diagnostic tools returning structured evidence ([docs/diagnostics.md](docs/diagnostics.md)) | **Implemented; awaiting your SQL Server verification** |
+| 4+ | MCP server, LangGraph + OpenAI agent, VSL governance, approval and recovery, persistence, final demo | **Not started** |
 
-**Not implemented yet:** diagnostic tools, MCP server, LangGraph agent, VSL integration, OpenAI calls, automatic
-recovery. The application makes no OpenAI request.
+**Not implemented yet:** MCP server, LangGraph agent, VSL integration, OpenAI calls, automatic recovery. The
+application makes no OpenAI request.
 
 ## Prerequisites
 
@@ -101,6 +102,12 @@ All commands are `python -m scripts.<name>` from the project root with `.venv` a
 Typical first session: `check_prereqs` -> `db_init` -> `db_seed` -> `db_verify` -> `run_pipeline --pipeline order_ingestion`
 -> `show logs <run id>`. The guided checklist with expected output is [docs/learning-exercises.md](docs/learning-exercises.md).
 
+## Run the diagnostic tools (Phase 3)
+
+```powershell
+python -m scripts.diagnose all --brief      # read-only; see docs/diagnostics.md for every tool
+```
+
 ## Test
 
 ```powershell
@@ -123,7 +130,7 @@ See [docs/windows-setup.md](docs/windows-setup.md) section 6 for database errors
 
 ## Planned phases
 
-1. Foundation (done) 2. Simulated operational environment (implemented) 3. Diagnostic and operational tools
+1. Foundation (done) 2. Simulated operational environment (done) 3. Diagnostic tools (implemented)
 4. Custom DataOps MCP server 5. LangGraph + OpenAI agent 6. VSL governance integration
 7. Human approval and controlled recovery 8. FastAPI, persistence and ticketing (GitHub Issues) 9. Testing and demonstration.
 Future enhancements (not started): cloud integrations, Streamlit dashboard, expanded MCP ecosystem, benchmarking and hardening.

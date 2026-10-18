@@ -62,6 +62,14 @@ independently.
 - It does **not require a DataMart**; SQL Server holds synthetic operational and
   pipeline-related tables only.
 
+## Phase 3 implementation (diagnostic tools)
+
+`app/diagnostics/` holds read-only tools (pipeline status, log inspection, duplicates, data quality,
+freshness, record-count reconciliation, schema contract) that return a common structured
+`DiagnosticResult`. They reuse the Phase 2 validators, clock, log store and repository interface through a
+`ReadOnlyRepo`, and are exposed only by `scripts/diagnose.py` for now. The MCP wrappers, LangGraph agent,
+VSL governance and any recovery action remain later phases. See [diagnostics.md](diagnostics.md).
+
 ## Phase 2 implementation (simulated operational environment)
 
 Implemented in Phase 2 (details in [simulation.md](simulation.md)): a SQL Server schema of ordinary

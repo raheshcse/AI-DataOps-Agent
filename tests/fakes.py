@@ -107,8 +107,9 @@ class InMemoryRepo:
     def get_pipeline(self, pid):
         return next((copy.deepcopy(d) for d in self.defs if d["pipeline_id"] == pid), None)
 
-    def list_runs(self, pipeline_id=None, limit=20):
-        rows = [r for r in self.runs if pipeline_id in (None, r["pipeline_id"])]
+    def list_runs(self, pipeline_id=None, limit=20, status=None):
+        rows = [r for r in self.runs if pipeline_id in (None, r["pipeline_id"])
+                and status in (None, r["status"])]
         rows.sort(key=lambda r: (r["started_at"], r["run_id"]), reverse=True)
         return copy.deepcopy(rows[:limit])
 
@@ -196,6 +197,39 @@ class InMemoryRepo:
         rows = sorted((o for o in self.orders if not o.get("scenario_id")), key=lambda o: o["order_id"])[:limit]
         return [dict(copy.deepcopy(o), items=[copy.deepcopy(i) for i in self.items
                                               if i["order_id"] == o["order_id"]]) for o in rows]
+
+    # read-only detail queries used by app.diagnostics (same semantics as SqlRepository)
+    def duplicate_order_details(self):
+        groups = {}
+        for o in sorted(self.orders, key=lambda o: o["order_id"]):
+            groups.setdefault(o["source_event_id"].strip().casefold(), []).append(
+                {k: o[k] for k in ("order_id", "source_event_id", "customer_id", "batch_date",
+                                   "order_ts", "total_amount", "currency")})
+        return copy.deepcopy([{"source_event_id": g[0]["source_event_id"], "copies": len(g), "orders": g}
+                              for g in groups.values() if len(g) > 1])
+
+    def duplicate_feed_events(self):
+        groups = {}
+        for f in sorted(self.feed, key=lambda f: f["feed_id"]):
+            groups.setdefault(f["source_event_id"].strip().casefold(), []).append(f)
+        return [{"source_event_id": g[0]["source_event_id"], "copies": len(g),
+                 "feed_ids": [f["feed_id"] for f in g], "batch_dates": sorted({f["batch_date"] for f in g})}
+                for g in groups.values() if len(g) > 1]
+
+    def order_quality_scan(self):
+        from app.db.schema import ORDER_STATUSES
+        orders = sorted(self.orders, key=lambda o: o["order_id"])
+        blank = [{"order_id": o["order_id"], "source_event_id": o["source_event_id"], "currency": o["currency"]}
+                 for o in orders if not o["source_event_id"].strip() or not o["currency"].strip()]
+        negative = [{"order_id": o["order_id"], "source_event_id": o["source_event_id"],
+                     "total_amount": o["total_amount"], "kind": "order"} for o in orders if o["total_amount"] < 0]
+        negative += [{"order_item_id": i["order_item_id"], "order_id": i["order_id"], "quantity": i["quantity"],
+                      "unit_price": i["unit_price"], "line_total": i["line_total"], "kind": "order_item"}
+                     for i in sorted(self.items, key=lambda i: i["order_item_id"])
+                     if i["quantity"] <= 0 or i["unit_price"] < 0 or i["line_total"] < 0]
+        bad = [{"order_id": o["order_id"], "source_event_id": o["source_event_id"], "status": o["status"]}
+               for o in orders if o["status"] not in ORDER_STATUSES]
+        return copy.deepcopy({"blank_required": blank, "negative_amounts": negative, "invalid_status": bad})
 
     def observed_schema(self, table_name):
         if table_name == "stg_order_feed":

@@ -187,6 +187,8 @@ pipeline_definitions = Table(
     Column("is_active", Boolean, nullable=False, server_default="1"),
 )
 
+ORDER_STATUSES = ("placed", "paid", "shipped", "cancelled")  # mirrors orders.status_valid
+
 RUN_STATUSES = ("running", "success", "warning", "failed")
 
 pipeline_runs = Table(

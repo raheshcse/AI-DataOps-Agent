@@ -97,9 +97,14 @@ def run_order_ingestion(ctx: Context) -> Outcome:
     return Outcome("success", expected, processed, steps=steps)
 
 
+def feed_table_for(active: set[str]) -> str:
+    """The feed table order_validation inspects (shared with the diagnostics schema tool)."""
+    return DRIFTED_FEED_TABLE if SCN_SCHEMA in active else FEED_TABLE
+
+
 def run_order_validation(ctx: Context) -> Outcome:
     feed_ids = [r["source_event_id"] for r in ctx.repo.get_feed_rows(ctx.batch_date)]
-    table = DRIFTED_FEED_TABLE if SCN_SCHEMA in ctx.active else FEED_TABLE
+    table = feed_table_for(ctx.active)
     last = ctx.repo.latest_successful_run("order_ingestion")
     results = evaluate_rules(RuleInputs(
         batch_date=ctx.batch_date, feed_event_ids=feed_ids,

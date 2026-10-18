@@ -17,6 +17,7 @@ from sqlalchemy import (
     func,
     insert,
     inspect,
+    or_,
     select,
     update,
 )
@@ -137,10 +138,12 @@ class SqlRepository:
                             .where(s.pipeline_definitions.c.pipeline_id == pipeline_id)).mappings().first()
             return dict(row) if row else None
 
-    def list_runs(self, pipeline_id: str | None = None, limit: int = 20) -> list[dict]:
+    def list_runs(self, pipeline_id: str | None = None, limit: int = 20, status: str | None = None) -> list[dict]:
         q = select(s.pipeline_runs).order_by(s.pipeline_runs.c.started_at.desc(), s.pipeline_runs.c.run_id.desc())
         if pipeline_id:
             q = q.where(s.pipeline_runs.c.pipeline_id == pipeline_id)
+        if status:
+            q = q.where(s.pipeline_runs.c.status == status)
         with self.engine.connect() as c:
             return _rows(c.execute(q.limit(limit)))
 
@@ -269,6 +272,54 @@ class SqlRepository:
         for order in orders:
             order["items"] = [it for it in items if it["order_id"] == order["order_id"]]
         return orders
+
+    # ------------------------------------------- read-only detail queries (diagnostics)
+    def duplicate_order_details(self) -> list[dict]:
+        """Orders whose ``source_event_id`` occurs more than once, grouped per event id."""
+        o = s.orders
+        repeated = select(o.c.source_event_id).group_by(o.c.source_event_id).having(func.count() > 1)
+        with self.engine.connect() as c:
+            rows = _rows(c.execute(
+                select(o.c.order_id, o.c.source_event_id, o.c.customer_id, o.c.batch_date, o.c.order_ts,
+                       o.c.total_amount, o.c.currency)
+                .where(o.c.source_event_id.in_(repeated)).order_by(o.c.source_event_id, o.c.order_id)))
+        groups: dict[str, list[dict]] = {}
+        for r in rows:  # SQL Server compares ids case-insensitively, so group the same way
+            groups.setdefault(r["source_event_id"].strip().casefold(), []).append(r)
+        return [{"source_event_id": g[0]["source_event_id"], "copies": len(g), "orders": g}
+                for g in groups.values() if len(g) > 1]
+
+    def duplicate_feed_events(self) -> list[dict]:
+        f = s.stg_order_feed
+        repeated = select(f.c.source_event_id).group_by(f.c.source_event_id).having(func.count() > 1)
+        with self.engine.connect() as c:
+            rows = _rows(c.execute(select(f.c.feed_id, f.c.source_event_id, f.c.batch_date)
+                                   .where(f.c.source_event_id.in_(repeated))
+                                   .order_by(f.c.source_event_id, f.c.feed_id)))
+        groups: dict[str, list[dict]] = {}
+        for r in rows:
+            groups.setdefault(r["source_event_id"].strip().casefold(), []).append(r)
+        return [{"source_event_id": g[0]["source_event_id"], "copies": len(g),
+                 "feed_ids": [r["feed_id"] for r in g], "batch_dates": sorted({r["batch_date"] for r in g})}
+                for g in groups.values() if len(g) > 1]
+
+    def order_quality_scan(self) -> dict[str, list[dict]]:
+        """Identifier-level findings for blank required values, negative amounts and bad statuses."""
+        o, i = s.orders, s.order_items
+        blank = or_(func.ltrim(func.rtrim(o.c.source_event_id)) == "", func.ltrim(func.rtrim(o.c.currency)) == "")
+        with self.engine.connect() as c:
+            blank_rows = _rows(c.execute(select(o.c.order_id, o.c.source_event_id, o.c.currency)
+                                         .where(blank).order_by(o.c.order_id)))
+            neg_orders = _rows(c.execute(select(o.c.order_id, o.c.source_event_id, o.c.total_amount)
+                                         .where(o.c.total_amount < 0).order_by(o.c.order_id)))
+            neg_items = _rows(c.execute(select(i.c.order_item_id, i.c.order_id, i.c.quantity, i.c.unit_price,
+                                               i.c.line_total)
+                                        .where(or_(i.c.quantity <= 0, i.c.unit_price < 0, i.c.line_total < 0))
+                                        .order_by(i.c.order_item_id)))
+            bad_status = _rows(c.execute(select(o.c.order_id, o.c.source_event_id, o.c.status)
+                                         .where(o.c.status.not_in(s.ORDER_STATUSES)).order_by(o.c.order_id)))
+        negative = ([dict(r, kind="order") for r in neg_orders] + [dict(r, kind="order_item") for r in neg_items])
+        return {"blank_required": blank_rows, "negative_amounts": negative, "invalid_status": bad_status}
 
     def observed_schema(self, table_name: str) -> dict[str, str]:
         if table_name not in READABLE_SCHEMA_TABLES:
