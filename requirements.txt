@@ -14,3 +14,6 @@ pyodbc==5.3.0
 mcp==2.3.0
 # Phase 5: LangGraph workflow for the investigation agent.
 langgraph==1.2.16
+# Phase 6: VSL governance. The adapter pulls super-semantics-vsl (import name vsl_core) itself; do NOT pin
+# Core separately (two direct URLs can fail to resolve). Not 'pip install vsl-core' (an unrelated stub).
+vsl-langgraph @ git+https://github.com/supersemantics/VSL-Langgraph.git@72379e9300597b23a340ad9d479502d8603c28ce

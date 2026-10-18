@@ -27,6 +27,9 @@ logs/*
 *.sqlite3
 *.bak
 
+# Local VSL governance ledger (never commit ledger data)
+data/
+
 # Editors / OS
 .vscode/
 .idea/

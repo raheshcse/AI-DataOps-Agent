@@ -1,8 +1,9 @@
 # Architecture (planned)
 
 > **Status:** this describes the *intended* architecture. As of Phase 1 only the
-> FastAPI skeleton (`/health`, `/ready`) and configuration exist. OpenAI calls,
-> LangGraph, MCP, VSL governance, recovery and persistence are **not implemented yet**.
+> FastAPI skeleton (`/health`, `/ready`) and configuration existed; later phases added the simulation, diagnostics,
+> MCP server, investigation agent and (Phase 6) VSL governance of a no-op protected action
+> ([vsl-governance.md](vsl-governance.md)). Real recovery, approvals and persistence are **not implemented yet**.
 
 ## Purpose
 

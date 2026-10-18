@@ -17,9 +17,10 @@ See [docs/architecture.md](docs/architecture.md) for the planned design and
 | 3 | Read-only diagnostic tools returning structured evidence ([docs/diagnostics.md](docs/diagnostics.md)) | Done and committed (`6eda154`); you reported the SQL Server integration suite passed |
 | 4 | Custom read-only DataOps MCP server over the diagnostics ([docs/mcp-server.md](docs/mcp-server.md)) | Done and committed (`e3dd81d`); you reported 30 SQL Server integration tests passing |
 | 5 | LangGraph + OpenAI investigation agent over the MCP server ([docs/agent.md](docs/agent.md)) | **Implemented; awaiting your review.** Offline mode and all tests run without a key; **live OpenAI behaviour is unverified** |
-| 6+ | VSL governance, approval and recovery, persistence, final demo | **Not started** |
+| 6 | VSL governance of protected actions: policy, gates, hash-chained ledger, audit CLI ([docs/vsl-governance.md](docs/vsl-governance.md)) | **Implemented; awaiting your review.** Gates a no-op stub only; no real recovery action |
+| 7+ | Approval and recovery, persistence, final demo | **Not started** |
 
-**Not implemented yet:** VSL integration, approval flow, automatic recovery. No OpenAI request has ever been
+**Not implemented yet:** the approval flow and any real recovery action (Phase 6 governs a no-op stub). No OpenAI request has ever been
 made by this project; the agent's live mode exists but is unverified (see [docs/agent.md](docs/agent.md)). The
 web application itself makes no OpenAI request.
 
@@ -155,6 +156,6 @@ See [docs/windows-setup.md](docs/windows-setup.md) section 6 for database errors
 ## Planned phases
 
 1. Foundation (done) 2. Simulated operational environment (done) 3. Diagnostic tools (done)
-4. Custom DataOps MCP server (done) 5. LangGraph + OpenAI agent (implemented) 6. VSL governance integration
+4. Custom DataOps MCP server (done) 5. LangGraph + OpenAI agent (implemented) 6. VSL governance integration (implemented)
 7. Human approval and controlled recovery 8. FastAPI, persistence and ticketing (GitHub Issues) 9. Testing and demonstration.
 Future enhancements (not started): cloud integrations, Streamlit dashboard, expanded MCP ecosystem, benchmarking and hardening.
