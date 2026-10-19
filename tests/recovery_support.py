@@ -93,7 +93,7 @@ class Env:
 
 
 def make_env(tmp_path: Path, *, name: str = "a", clock: Clock | None = None, sim: SimulationService | None = None,
-             allowed: frozenset[str] = RECOVERY_ACTIONS, revoked: set[str] = frozenset()) -> Env:
+             allowed: frozenset[str] = RECOVERY_ACTIONS, revoked: set[str] = frozenset(), auth: Any = None) -> Env:
     """A complete Phase 7 stack. Calling it twice with the same ``name`` and ``tmp_path`` but a fresh Python
     object graph simulates a process restart over the same ledger file and approval database."""
     clock = clock or Clock()
@@ -103,7 +103,7 @@ def make_env(tmp_path: Path, *, name: str = "a", clock: Clock | None = None, sim
     ledger_path, db_path = tmp_path / f"{name}-ledger.jsonl", tmp_path / f"{name}-approvals.sqlite3"
     recorder = GovernanceRecorder(open_ledger(ledger_path, fsync=False))
     store = SqliteApprovalStore(db_path)
-    approvals = ApprovalService(store, ApprovalSigner(SIGNING_KEY), make_auth(revoked), recorder, clock=clock)
+    approvals = ApprovalService(store, ApprovalSigner(SIGNING_KEY), auth or make_auth(revoked), recorder, clock=clock)
     executor = CountingExecutor(sim)
     governed = GovernedActionService(recorder, RecoveryRunner(executor, approvals, recorder),
                                      policy=build_policy(allowed))

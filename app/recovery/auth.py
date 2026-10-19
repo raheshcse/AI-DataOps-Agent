@@ -30,6 +30,12 @@ ROLE_APPROVER = "recovery_approver"        # may approve low/medium-risk recover
 ROLE_ADMIN = "recovery_admin"              # may approve every recovery action
 ROLE_AUTHORITY = "governance_authority"    # may re-enable after a terminal state
 ROLE_VIEWER = "viewer"                     # may look, never approve
+# Phase 8 API roles. They carry NO approval permission (the Phase 7 table below gives them an empty set), so an
+# ordinary investigator or operator can never approve a recovery. What they may do over HTTP is defined separately in
+# app/api/v1/permissions.py; the approval service still decides every approval on its own.
+ROLE_API_READER = "api_reader"             # read incidents, investigations, approvals, recoveries, tickets
+ROLE_INVESTIGATOR = "investigator"         # read + create incidents + run investigations
+ROLE_OPERATOR = "operator"                 # investigator + request/resume recoveries + manage tickets
 
 PERM_RE_ENABLE = "governance:re_enable"
 
@@ -43,6 +49,9 @@ ROLE_PERMISSIONS: dict[str, frozenset[str]] = {
     ROLE_ADMIN: frozenset({approve_permission("rerun_pipeline"), approve_permission("remove_injected_condition")}),
     ROLE_AUTHORITY: frozenset({PERM_RE_ENABLE}),
     ROLE_VIEWER: frozenset(),
+    ROLE_API_READER: frozenset(),
+    ROLE_INVESTIGATOR: frozenset(),
+    ROLE_OPERATOR: frozenset(),
 }
 
 _SUBJECT_RE = re.compile(r"^[A-Za-z0-9_.@-]{1,64}$")

@@ -26,6 +26,18 @@ CONFIG_VARS = [
     "SIM_LOG_DIR",
     "FRESHNESS_THRESHOLD_MINUTES",
     "RUN_SQLSERVER_TESTS",
+    # Phase 8: no test may inherit a developer's API / ticketing / persistence configuration.
+    "DATABASE_URL",
+    "INVESTIGATION_MODE",
+    "GITHUB_TOKEN",
+    "GITHUB_OWNER",
+    "GITHUB_REPO",
+    "GITHUB_API_URL",
+    "APPROVAL_AUTH_MODE",
+    "APPROVAL_DEV_CREDENTIALS",
+    "APPROVAL_SIGNING_KEY",
+    "APPROVAL_STORE_PATH",
+    "GOVERNANCE_LEDGER_PATH",
 ]
 
 FAKE_KEY = "sk-test-FAKEFAKEFAKE1234567890"

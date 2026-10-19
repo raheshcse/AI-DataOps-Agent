@@ -104,3 +104,5 @@ pipeline logic, database access and API routes separate.
   `GET /ready` (config validity and required values, no secret values returned),
   request logging (method, path, status only) and a generic 500 handler.
 - `app/core/logging.py` – log redaction for API keys, bearer tokens and similar.
+- `app/api/v1/`, `app/services/`, `app/persistence/`, `app/integrations/` – Phase 8 API, services, SQLite operational store and GitHub Issues
+  adapter, mounted at `/api/v1`. Recovery is reachable only through the Phase 7 approval workflow. See [phase8-api-persistence-ticketing.md](phase8-api-persistence-ticketing.md).

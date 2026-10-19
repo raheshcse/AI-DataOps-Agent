@@ -10,6 +10,7 @@ from pydantic import ValidationError
 
 from app import __version__
 from app.api.simulation import router as simulation_router
+from app.api.v1 import create_api_app
 from app.config import get_settings
 from app.core.logging import RedactionFilter, configure_logging
 
@@ -37,6 +38,16 @@ app = FastAPI(
 
 
 app.include_router(simulation_router)
+
+
+def _build_services():
+    from app.services.container import build_services
+
+    return build_services()
+
+
+# Phase 8: the versioned API is a mounted sub-application; services are built lazily on first use.
+app.mount("/api/v1", create_api_app(_build_services))
 
 
 @app.middleware("http")
