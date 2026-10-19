@@ -20,7 +20,8 @@ See [docs/architecture.md](docs/architecture.md) for the planned design and
 | 6 | VSL governance of protected actions: policy, gates, hash-chained ledger, audit CLI ([docs/vsl-governance.md](docs/vsl-governance.md)) | **Implemented; awaiting your review.** Gates a no-op stub only; no real recovery action |
 | 7 | Human approval and controlled recovery: authenticated, exact-action, single-use approvals; allowlisted recovery behind the Phase 6 gates ([docs/phase7-human-approval-recovery.md](docs/phase7-human-approval-recovery.md)) | **Implemented; awaiting your review.** Recovery acts on the simulation only; authentication is fail-closed (a local dev verifier exists, no production identity provider) |
 | 8 | Secure FastAPI backend (`/api/v1`), SQLite persistence of incidents/investigations/recoveries, GitHub Issues ticketing ([docs/phase8-api-persistence-ticketing.md](docs/phase8-api-persistence-ticketing.md)) | **Implemented; awaiting your review.** Not production-ready: dev-only authentication, single-host SQLite, ticketing tested against a fake only |
-| 9+ | Final demo | **Not started** |
+| 9 | End-to-end validation, Docker image, CI workflow, cloud deployment foundations ([docs/phase9-end-to-end-validation-cloud-infrastructure.md](docs/phase9-end-to-end-validation-cloud-infrastructure.md)) | **Implemented; awaiting your review.** Docker build and CI run not yet executed; nothing deployed; SQL Server checks need your machine |
+| 10+ | Dashboard, expanded MCP ecosystem, production readiness | **Not started** |
 
 **Not implemented yet:** a production identity provider, an operator UI or dashboard, and any recovery against a real system (Phase 7 recovers the simulation only, behind human approval). No OpenAI request has ever been
 made by this project; the agent's live mode exists but is unverified (see [docs/agent.md](docs/agent.md)). The

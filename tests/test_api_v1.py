@@ -4,7 +4,7 @@ import logging
 
 import pytest
 
-from tests.api_support import API_TOKENS, INCIDENT, FakeGitHub, api, auth  # noqa: F401  (api is a fixture)
+from tests.api_support import API_TOKENS, INCIDENT, FakeGitHub, api, auth, reset_main_services  # noqa: F401  (api is a fixture)
 
 
 # ------------------------------------------------------------------------------------------ health
@@ -39,6 +39,7 @@ def test_ready_reports_a_suspended_governance_state(api):
 def test_existing_root_routes_are_unchanged_by_the_mount(tmp_path, monkeypatch):
     from fastapi.testclient import TestClient
     from app.main import app
+    reset_main_services(app)
     monkeypatch.setenv("DATABASE_URL", f"sqlite:///{(tmp_path / 'ops.sqlite3').as_posix()}")        # never the default data/ paths
     monkeypatch.setenv("APPROVAL_STORE_PATH", str(tmp_path / "approvals.sqlite3"))
     monkeypatch.setenv("GOVERNANCE_LEDGER_PATH", str(tmp_path / "ledger.jsonl"))
@@ -47,6 +48,7 @@ def test_existing_root_routes_are_unchanged_by_the_mount(tmp_path, monkeypatch):
         assert client.get("/api/v1/health").json()["status"] == "ok"
         assert client.get("/api/v1/incidents").status_code == 401   # real wiring: auth is disabled -> nobody authenticates
         assert client.get("/openapi.json").status_code == 200 and client.get("/api/v1/openapi.json").status_code == 200
+    reset_main_services(app)
 
 
 # ------------------------------------------------------------------------------------------ incidents

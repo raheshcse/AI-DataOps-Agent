@@ -13,6 +13,7 @@ from app.api.simulation import router as simulation_router
 from app.api.v1 import create_api_app
 from app.config import get_settings
 from app.core.logging import RedactionFilter, configure_logging
+from app.core.startup import validate_startup
 
 logger = logging.getLogger("app.request")
 logger.addFilter(RedactionFilter())  # applies to records logged on this logger
@@ -20,6 +21,8 @@ logger.addFilter(RedactionFilter())  # applies to records logged on this logger
 
 @asynccontextmanager
 async def lifespan(_: FastAPI):
+    # Phase 9: in production only, refuse to start on missing/unsafe configuration (names only in the error).
+    validate_startup()
     # Logging setup must never stop the app from starting: /health has to stay up
     # even if configuration is invalid (/ready reports that).
     try:

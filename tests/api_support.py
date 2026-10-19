@@ -194,3 +194,12 @@ def api(tmp_path):
     yield factory
     for e in made:
         e.close()
+
+
+def reset_main_services(main_app) -> None:
+    """app.main builds its API services lazily and caches them on the (module-global) app. Tests that use that global
+    app must clear the cache so one test's environment never leaks into another."""
+    for route in main_app.routes:
+        provider = getattr(getattr(getattr(route, "app", None), "state", None), "provider", None)
+        if provider is not None:
+            provider._services = None

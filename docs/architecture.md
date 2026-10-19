@@ -106,3 +106,5 @@ pipeline logic, database access and API routes separate.
 - `app/core/logging.py` – log redaction for API keys, bearer tokens and similar.
 - `app/api/v1/`, `app/services/`, `app/persistence/`, `app/integrations/` – Phase 8 API, services, SQLite operational store and GitHub Issues
   adapter, mounted at `/api/v1`. Recovery is reachable only through the Phase 7 approval workflow. See [phase8-api-persistence-ticketing.md](phase8-api-persistence-ticketing.md).
+- `app/core/startup.py`, `Dockerfile`, `docker-compose.yml`, `.github/workflows/ci.yml` – Phase 9 production start-up validation, single-host
+  container image and CI. See [phase9-end-to-end-validation-cloud-infrastructure.md](phase9-end-to-end-validation-cloud-infrastructure.md).

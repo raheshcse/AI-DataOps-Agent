@@ -1,0 +1,91 @@
+# CI for the AI DataOps Agent (Phase 9). Needs NO secrets, makes NO paid LLM calls and contacts NO external service
+# other than package registries and GitHub itself (to install the pinned VSL adapter). Nothing is published or deployed.
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  tests:
+    name: Tests (Python ${{ matrix.python-version }})
+    runs-on: ubuntu-latest
+    timeout-minutes: 25
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.10", "3.12"]   # the versions the project documents as supported
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements.txt
+      - name: System packages (generic ODBC driver manager for pyodbc)
+        run: sudo apt-get update && sudo apt-get install -y --no-install-recommends unixodbc
+      - name: Install dependencies (requirements.txt, unchanged)
+        run: python -m pip install -r requirements.txt
+      - name: pip check
+        run: python -m pip check
+      - name: Focused tests - API, persistence, ticketing, governance, end-to-end
+        run: >
+          python -m pytest -q -p no:cacheprovider
+          tests/test_api_persistence.py tests/test_api_github.py tests/test_api_v1.py
+          tests/test_api_governance.py tests/test_api_e2e.py tests/test_api_static.py
+          tests/test_phase9_e2e.py tests/test_phase9_deployment.py
+      - name: Full regression (SQL Server integration tests are skipped here, NOT passed)
+        run: python -m pytest -q -p no:cacheprovider -rs --junitxml=test-results/junit-${{ matrix.python-version }}.xml
+        env:
+          # explicit, harmless values: no real credentials exist in CI
+          APP_ENV: test
+      - name: VSL conformance
+        run: >
+          python -c "from vsl_core.conformance.suite import run_conformance_suite; from vsl_langgraph import LangGraphAdapter;
+          r = run_conformance_suite(LangGraphAdapter()); print(r or 'CONFORMANT'); raise SystemExit(1 if r else 0)"
+      - name: Upload test results
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results-py${{ matrix.python-version }}
+          path: test-results/
+          if-no-files-found: ignore
+
+  docker-build:
+    name: Docker image builds (not pushed)
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+    steps:
+      - uses: actions/checkout@v4
+      - name: Build the image (no push, no registry login)
+        run: docker build --pull --tag ai-dataops-agent:ci .
+      - name: Container runs as a non-root user and has no local state or secrets baked in
+        run: |
+          test "$(docker run --rm --entrypoint id ai-dataops-agent:ci -u)" = "10001"
+          docker run --rm --entrypoint sh ai-dataops-agent:ci -c 'test ! -e /srv/app/.env && test ! -e /srv/app/data && test -z "$(find /srv /data -name "*.sqlite3" -o -name "*.jsonl" 2>/dev/null)"'
+      - name: Production start-up refuses an unsafe configuration (no DB_NAME)
+        run: |
+          if docker run --rm ai-dataops-agent:ci; then echo "container started without DB_NAME" >&2; exit 1; fi
+      - name: Container starts and answers the liveness endpoint
+        run: |
+          docker run -d --name dataops-ci -e DB_NAME=dataops_sim_test ai-dataops-agent:ci
+          for i in $(seq 1 30); do
+            if docker exec dataops-ci python -c "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8000/api/v1/health', timeout=3)"; then ok=1; break; fi
+            sleep 2
+          done
+          docker logs dataops-ci
+          test "${ok:-0}" = "1"
+          docker rm -f dataops-ci
+
+# Intentionally NOT included: a SQL Server integration job. There is no safe, secret-free SQL Server test service
+# configured for this repository, so the SQL Server tests run only on your machine (dataops_sim_test) and are
+# reported as NOT RUN in CI rather than as passed.

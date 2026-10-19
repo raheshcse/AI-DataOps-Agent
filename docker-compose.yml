@@ -1,0 +1,38 @@
+# Local verification of the container (Phase 9). One service, no database server, no secrets in this file.
+#   PowerShell:  $env:DB_NAME = "dataops_sim_test"; docker compose up --build
+# Secrets and credentials are passed THROUGH from your shell environment (a bare name = pass-through); nothing is
+# written here. The port is published on 127.0.0.1 only: it is NOT exposed to the network by default.
+# SQLite + the JSONL ledger live in the named volume and are single-host: do not run more than one replica.
+services:
+  api:
+    build: .
+    image: ai-dataops-agent:local
+    ports:
+      - "127.0.0.1:8000:8000"
+    environment:
+      APP_ENV: ${APP_ENV:-production}
+      DB_NAME: ${DB_NAME:?Set DB_NAME explicitly (use dataops_sim_test for recovery experiments; never reset dataops_sim)}
+      DB_SERVER: ${DB_SERVER:-host.docker.internal}
+      DB_AUTH_MODE: ${DB_AUTH_MODE:-sql}
+      DB_USER:
+      DB_PASSWORD:
+      APPROVAL_AUTH_MODE:
+      APPROVAL_DEV_CREDENTIALS:
+      APPROVAL_SIGNING_KEY:
+      GITHUB_TOKEN:
+      GITHUB_OWNER:
+      GITHUB_REPO:
+      OPENAI_API_KEY:
+      INVESTIGATION_MODE: ${INVESTIGATION_MODE:-offline}
+    volumes:
+      - dataops_data:/data
+    read_only: true
+    tmpfs:
+      - /tmp
+    cap_drop:
+      - ALL
+    security_opt:
+      - no-new-privileges:true
+    restart: "no"
+volumes:
+  dataops_data:
