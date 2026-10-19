@@ -70,8 +70,8 @@ reaches diagnostics only through the Phase 4 MCP server over stdio. OpenAI (stri
 calling) proposes tool calls and interpretation; code validates arguments against the discovered schemas, enforces
 budgets, takes facts from tool results, verifies every model claim against the evidence, computes the status and
 caps confidence. A deterministic offline engine stands in for the model for demos and tests. It cannot import the
-database, diagnostics or simulation code and has no write or recovery capability. Governance (Phase 6) is not
-part of it. See [agent.md](agent.md).
+database, diagnostics or simulation code and has no write or recovery capability. Governance (Phase 6) and
+human-approved recovery (Phase 7, `app/recovery/`) are not part of it. See [agent.md](agent.md).
 
 ## Phase 4 implementation (MCP server)
 

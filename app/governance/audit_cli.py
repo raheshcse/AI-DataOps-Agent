@@ -13,6 +13,7 @@ Integrity cannot detect truncation; the printed checkpoint exists so an outside 
 from __future__ import annotations
 
 import argparse
+from collections.abc import Iterable
 import json
 import sys
 from importlib import metadata
@@ -37,6 +38,19 @@ def installed_vsl_commits() -> dict[str, str]:
     return found
 
 
+PHASE7_CHECK = "recovery_attempt_has_result"
+
+
+def recovery_attempts_without_result(entries: Iterable) -> list[str]:
+    """Phase 7 extension (reported separately from the five VSL checks): every ``recovery_attempt`` record must
+    have a result record caused_by it. An attempt with no result means the outcome is unrecorded/uncertain."""
+    entries = list(entries)  # callers may pass a generator; this function reads it twice
+    attempts = [e.entry_id for e in entries if e.entry_type.value == "MONITOR" and e.payload.get("outcome") == "recovery_attempt"]
+    resolved = {e.caused_by for e in entries if e.entry_type.value == "MONITOR"
+                and str(e.payload.get("outcome", "")).startswith("recovery_") and e.payload.get("outcome") != "recovery_attempt"}
+    return [a for a in attempts if a not in resolved]
+
+
 def run_audit(path: Path, max_gap: float | None) -> tuple[int, dict[str, Any]]:
     report: dict[str, Any] = {"ledger": str(path), "vsl": installed_vsl_commits()}
     if not path.is_file():
@@ -53,9 +67,11 @@ def run_audit(path: Path, max_gap: float | None) -> tuple[int, dict[str, Any]]:
     checkpoint = ledger.current_checkpoint()
     report["checkpoint"] = {"sequence": checkpoint.sequence, "entry_hash": checkpoint.entry_hash} if checkpoint else None
     audit = ledger.audit(max_monitor_gap_seconds=max_gap)
+    unresolved = recovery_attempts_without_result(entries)
     report.update(checks_passed=list(audit.checks_passed), checks_failed=list(audit.checks_failed),
-                  violations=audit.violations)
-    return (0 if integrity and audit.all_passed else 1), report
+                  violations=audit.violations,
+                  phase7={"check": PHASE7_CHECK, "passed": not unresolved, "violations": unresolved})
+    return (0 if integrity and audit.all_passed and not unresolved else 1), report
 
 
 def main(argv: list[str] | None = None) -> int:
@@ -85,6 +101,9 @@ def main(argv: list[str] | None = None) -> int:
         print(f"  PASS  {name}")
     for name in report["checks_failed"]:
         print(f"  FAIL  {name}: {', '.join(report['violations'][name])}")
+    p7 = report["phase7"]
+    print(f"  {'PASS' if p7['passed'] else 'FAIL'}  {p7['check']} (Phase 7 extension)"
+          + ("" if p7["passed"] else ": " + ", ".join(p7["violations"])))
     print("Note: integrity cannot detect truncation. Max-gap check " + ("ran." if args.max_monitor_gap_seconds is not None else "skipped."))
     print("Result: " + ("PASS" if code == 0 else "FAIL"))
     return code

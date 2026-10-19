@@ -44,7 +44,12 @@ from app.governance.policy import (
 )
 
 OUTCOMES = ("executed", "denied_human_review", "terminal_suspended", "refused_suspended", "governance_error",
-            "blocked")
+            "blocked", "recovery_blocked", "recovery_failed", "recovery_verification_failed", "recovery_uncertain")
+
+# What a runner may report. A runner that returns no status (the Phase 6 stub) means "executed".
+RUNNER_OUTCOMES = {"executed": "executed", "blocked": "recovery_blocked", "failed": "recovery_failed",
+                   "verification_failed": "recovery_verification_failed", "uncertain": "recovery_uncertain",
+                   "succeeded_unrecorded": "governance_error"}
 
 
 class GovState(TypedDict, total=False):
@@ -59,6 +64,8 @@ class GovState(TypedDict, total=False):
     outcome: str
     reasons: list[str]
     entry_ids: Annotated[list[str], operator.add]
+    cause_entry_id: str | None
+    execution_status: str
 
 
 @dataclass(frozen=True)
@@ -69,6 +76,7 @@ class GovernanceResult:
     executed: bool
     reasons: tuple[str, ...] = ()
     entry_ids: tuple[str, ...] = ()
+    execution_status: str = "not_run"  # not_run | executed | failed | verification_failed | uncertain | ...
 
     @property
     def approved(self) -> bool:
@@ -99,6 +107,8 @@ class GovernedActionService:
         self.gates = compile_gates(self.policy, adapter)  # raises GovernanceConfigError when invalid
         self._lock = asyncio.Lock()
         self._executed_decision: str | None = None
+        self._attempt_decision: str | None = None
+        self._runner_status: tuple[str, str] | None = None  # (decision_id, status the runner reported)
         self.graph = self._build_graph()
 
     # ---- graph -----------------------------------------------------------------------------------------
@@ -116,8 +126,8 @@ class GovernedActionService:
 
         def record_approval(state: GovState) -> dict[str, Any]:
             cand = candidate_of(state)
-            entry = rec.monitor(decision_id=state["decision_id"], drift=False, outcome="authorised",
-                                action=_safe(cand.action),
+            entry = rec.monitor(decision_id=state["decision_id"], drift=False, caused_by=state.get("cause_entry_id"),
+                                outcome="authorised", action=_safe(cand.action),
                                 approved_by=_safe(cand.approval.approved_by if cand.approval else ""))
             return {"authorisation_entry_id": entry.entry_id, "entry_ids": [entry.entry_id]}
 
@@ -166,11 +176,17 @@ class GovernedActionService:
             if not auth or any(state.get(key) is not None for key in DENIAL_KEYS):
                 raise UnauthorisedExecution("execute_action reached without a passing gate sequence")
             cand = candidate_of(state)
-            self.runner.execute(cand.action, auth)
+            self._attempt_decision = state["decision_id"]  # from here on, a failure means "uncertain"
+            extra = {} if cand.context is None else {"context": cand.context}
+            result = self.runner.execute(cand.action, auth, **extra)
             self._executed_decision = state["decision_id"]
-            done = rec.monitor(decision_id=state["decision_id"], drift=False, caused_by=auth, outcome="executed",
-                               action=_safe(cand.action))
-            return {"outcome": "executed", "reasons": [], "entry_ids": [done.entry_id]}
+            status = result.get("status", "executed") if isinstance(result, dict) else "executed"
+            self._runner_status = (state["decision_id"], _safe(status, 40))
+            outcome = RUNNER_OUTCOMES.get(status, "governance_error")  # an unknown status is never success
+            reasons = list(result.get("reasons", ())) if isinstance(result, dict) else []
+            done = rec.monitor(decision_id=state["decision_id"], drift=False, caused_by=auth, outcome=outcome,
+                               action=_safe(cand.action), execution_status=_safe(status, 40))
+            return {"outcome": outcome, "reasons": reasons, "entry_ids": [done.entry_id], "execution_status": status}
 
         g = StateGraph(GovState)
         for name, fn in (("load_context", load_context), ("guard_suspension", guard_suspension),
@@ -194,23 +210,32 @@ class GovernedActionService:
         return g.compile()
 
     # ---- entry points ----------------------------------------------------------------------------------
-    async def govern(self, proposal: GateInput) -> GovernanceResult:
-        decision_id = new_decision_id()
+    async def govern(self, proposal: GateInput, *, decision_id: str | None = None,
+                     caused_by: str | None = None) -> GovernanceResult:
+        decision_id = decision_id or new_decision_id()
         action = _safe(proposal.action)
         async with self._lock:
             try:
-                state = await self.graph.ainvoke({"decision_id": decision_id, "proposal": proposal, "entry_ids": []})
+                state = await self.graph.ainvoke({"decision_id": decision_id, "proposal": proposal, "entry_ids": [],
+                                                  "cause_entry_id": caused_by})
             except AutomationDeniedException:
                 # A denial that escaped its gate: still a block, never an approval.
                 return GovernanceResult("blocked", decision_id, action, False, ("unexpected_denial",))
             except Exception as exc:  # noqa: BLE001 - fail closed: any other failure means no protected action
                 executed = self._executed_decision == decision_id
+                attempted = self._attempt_decision == decision_id
                 reason = type(exc).__name__ if isinstance(exc, (GovernanceLedgerError, UnauthorisedExecution)) \
                     else "gate_or_graph_failure:" + type(exc).__name__
-                return GovernanceResult("governance_error", decision_id, action, executed, (reason,))
+                status = "executed" if executed else ("uncertain" if attempted else "not_run")
+                if self._runner_status and self._runner_status[0] == decision_id:
+                    status = self._runner_status[1]  # keep the runner's honest status when only the closing record failed
+                    executed = status in ("executed", "succeeded_unrecorded")
+                return GovernanceResult("governance_error", decision_id, action, executed, (reason,),
+                                        execution_status=status)
         outcome = state.get("outcome", "governance_error")
         return GovernanceResult(outcome, decision_id, action, outcome == "executed",
-                                tuple(state.get("reasons", ())), tuple(state.get("entry_ids", ())))
+                                tuple(state.get("reasons", ())), tuple(state.get("entry_ids", ())),
+                                execution_status=state.get("execution_status", "not_run"))
 
     def govern_sync(self, proposal: GateInput) -> GovernanceResult:
         return asyncio.run(self.govern(proposal))

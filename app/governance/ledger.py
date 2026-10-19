@@ -78,6 +78,12 @@ class GovernanceRecorder:
         if not ok:
             raise GovernanceLedgerError("ledger hash-chain integrity check failed")
 
+    def get_entry(self, entry_id: str | None) -> LedgerEntry | None:
+        """Read one entry back from the store (used to prove a record really persisted)."""
+        if not entry_id:
+            return None
+        return next((e for e in self._entries() if e.entry_id == entry_id), None)
+
     def open_terminal_id(self) -> str | None:
         """Entry id of the latest TERMINAL with no HUMAN_AUTHORISED_TRANSITION caused_by it, else None."""
         entries = self._entries()

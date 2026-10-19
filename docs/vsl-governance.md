@@ -50,7 +50,7 @@ Phase 1-5 behaviour are unchanged.
 ## Governed now vs. later
 * **Now:** a proposed protected action (`rerun_validation_dry_run`, `restart_stage_dry_run`) reaching a no-op stub.
 * **Not governed:** reading/diagnosing (harmless), anything the model says. There is **no real recovery action yet**.
-* **Phase 7:** real approvals, a human-review queue, real recovery behind the same gates, wiring `re_enable` to an operator flow.
+* **Phase 7 (now implemented, see [phase7-human-approval-recovery.md](phase7-human-approval-recovery.md)):** authenticated approvals, two allowlisted recovery actions on the simulation behind these same gates, and an authenticated `re_enable` service (not reachable from any graph). Still open: an operator UI and a production identity provider.
 
 ## Meanings
 * **PreNode denial (soft).** A failed precondition (report not `issue_identified`, evidence not cited or unknown, approval
@@ -105,7 +105,7 @@ executing, errors treated as success) were each caught by the suite.
 ## Limitations
 * Suspension is held by the ledger and rehydrated at each decision, so a restart is safe, but deleting or **truncating** the file loses it:
   `verify_integrity()` cannot detect truncation or replacement by an older consistent chain. `current_checkpoint()` (printed by the CLI) is for an outside anchor.
-* `ApprovalContext` is unauthenticated until Phase 7. Today nothing issues approvals, so by default every action is routed to human review.
+* `ApprovalContext` is only as trustworthy as its issuer. Phase 7 issues it solely from a sealed, authenticated, single-use approval; the Phase 6 gate itself still takes it as given. With no approval, every action is routed to human review. The audit CLI also reports a separate Phase 7 check (`recovery_attempt_has_result`); the five VSL checks are unchanged.
 * One decision at a time per service (an `asyncio.Lock`); a local single-host JSONL file; no durability or multi-writer production claim.
 * `Fallback` fields are declarative only; the adapter does not retry. LOW assurance is the honest ceiling.
 * Core tracks `main` unless you pin it.

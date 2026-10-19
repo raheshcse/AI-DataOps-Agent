@@ -78,6 +78,9 @@ class GateInput:
     known_evidence_ids: tuple[str, ...] = ()
     approval: ApprovalContext | None = None
     suspended: bool = False
+    # Opaque, caller-built data handed to the action runner (never read by a gate). Phase 7 puts the
+    # validated request id and parameters here.
+    context: object | None = None
 
 
 def failed_preconditions(candidate: GateInput) -> tuple[str, ...]:
@@ -98,10 +101,6 @@ async def _preconditions_monitor(candidate: GateInput) -> GammaEstimate:
     return GammaEstimate(gamma_hat=FAIL_GAMMA if failed_preconditions(candidate) else PASS_GAMMA)
 
 
-async def _allowlist_rule(candidate: GateInput) -> bool:
-    return candidate.action in ALLOWED_ACTIONS
-
-
 async def _not_suspended_rule(candidate: GateInput) -> bool:
     return not candidate.suspended
 
@@ -115,7 +114,12 @@ class Policy:
     allowed_actions: frozenset[str] = field(default=ALLOWED_ACTIONS)
 
 
-def build_policy() -> Policy:
+def build_policy(allowed_actions: frozenset[str] = ALLOWED_ACTIONS) -> Policy:
+    allowed = frozenset(allowed_actions)
+
+    async def _allowlist_rule(candidate: GateInput) -> bool:
+        return candidate.action in allowed
+
     terminal = TerminalState(
         name=TERMINAL_NAME,
         description="Protected actions are suspended. Cleared only by a human-authorised transition.",
@@ -145,4 +149,5 @@ def build_policy() -> Policy:
             on_violation=terminal,
         ),
         terminal=terminal,
+        allowed_actions=allowed,
     )
