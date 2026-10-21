@@ -30,11 +30,15 @@ jobs:
         with:
           python-version: ${{ matrix.python-version }}
           cache: pip
-          cache-dependency-path: requirements.txt
+          cache-dependency-path: |
+            requirements.txt
+            requirements-dashboard.txt
       - name: System packages (generic ODBC driver manager for pyodbc)
         run: sudo apt-get update && sudo apt-get install -y --no-install-recommends unixodbc
       - name: Install dependencies (requirements.txt, unchanged)
         run: python -m pip install -r requirements.txt
+      - name: Install dashboard dependencies (Phase 10 UI only; Streamlit, Plotly, pandas)
+        run: python -m pip install -r requirements-dashboard.txt
       - name: pip check
         run: python -m pip check
       - name: Focused tests - API, persistence, ticketing, governance, end-to-end
@@ -43,6 +47,15 @@ jobs:
           tests/test_api_persistence.py tests/test_api_github.py tests/test_api_v1.py
           tests/test_api_governance.py tests/test_api_e2e.py tests/test_api_static.py
           tests/test_phase9_e2e.py tests/test_phase9_deployment.py
+      - name: Focused tests - Phase 10 (MCP tools, read-only ledger API, dashboard, explorer)
+        run: >
+          python -m pytest -q -p no:cacheprovider
+          tests/test_phase10_mcp_tools.py tests/test_phase10_ledger_api.py
+          tests/test_phase10_dashboard_units.py tests/test_phase10_dashboard_app.py tests/test_phase10_explorer.py
+          tests/test_phase11_openapi.py tests/test_phase11_simulator_api.py tests/test_phase11_reviews_demo.py
+          tests/test_phase11_demo_dataset.py tests/test_phase11_dashboard_ui.py tests/test_phase11_explorer.py
+          tests/test_phase11_startup.py tests/test_phase11_auth_diagnostic.py tests/test_phase11_dev_stack.py tests/test_phase11_investigate_ui.py
+          tests/test_phase12_demo_incidents.py tests/test_phase12_explorer_e2e.py tests/test_phase12_ledger_ui.py tests/test_phase13_human_review_config.py
       - name: Full regression (SQL Server integration tests are skipped here, NOT passed)
         run: python -m pytest -q -p no:cacheprovider -rs --junitxml=test-results/junit-${{ matrix.python-version }}.xml
         env:

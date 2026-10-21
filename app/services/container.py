@@ -53,6 +53,7 @@ class Services:
     recorder: GovernanceRecorder | None = None
     recoveries: RecoveryService | None = None
     recovery_unavailable: str | None = "not_configured"
+    recovery_database: str | None = None     # name (never credentials) of the simulator database recovery was asked to use
     ticket_status: str = "not_configured"    # not_configured | configured | misconfigured
     throttle: AuthThrottle = field(default_factory=AuthThrottle)
     notes: dict[str, str] = field(default_factory=dict)
@@ -130,4 +131,29 @@ def build_services(environ: Mapping[str, str] | None = None, settings: Settings 
         services.recoveries.reconcile_all()
     except Exception as exc:  # noqa: BLE001
         services.recovery_unavailable = "recovery_target_unavailable:" + type(exc).__name__
+        services.recovery_database = settings.db_name
     return services
+
+
+def recovery_unavailable_info(services: Services) -> tuple[str, dict[str, Any]]:
+    """An accurate, secret-free explanation of WHY recovery/approvals are off, for the 503 body and the dashboards.
+
+    The reason is only ever an exception type name plus the database *name*; the safety guard itself is unchanged."""
+    reason = services.recovery_unavailable or "not_configured"
+    details: dict[str, Any] = {"reason": reason}
+    if reason.endswith("UnsafeRecoveryTarget"):
+        db = services.recovery_database or "the configured database"
+        details.update(database=services.recovery_database, required_database_suffix="_test",
+                       fix="Run the demo against a separate simulator database whose name ends with _test "
+                           "(for example DB_NAME=dataops_demo_test). See the README section 'Enable Human Review and recovery'.")
+        return (f"Recovery and approvals are switched off by a safety guard: recovery may only run against a database whose name "
+                f"ends with '_test', and this API is using '{db}'. Nothing was changed.", details)
+    if reason.startswith("approvals_not_configured"):
+        details["fix"] = "Start the API with scripts.dev_stack, or set APPROVAL_AUTH_MODE and APPROVAL_SIGNING_KEY."
+        return (f"Approvals are not configured on this API ({reason.split(':', 1)[-1]}). Start it with scripts.dev_stack, or set "
+                "APPROVAL_AUTH_MODE and APPROVAL_SIGNING_KEY.", details)
+    if reason.startswith("recovery_target_unavailable"):
+        details["fix"] = "Check DB_SERVER, DB_NAME and the ODBC driver (python -m scripts.check_prereqs), then restart the API."
+        return (f"Recovery could not reach its simulator database ({reason.split(':', 1)[-1]}). Check DB_SERVER / DB_NAME and "
+                "restart the API.", details)
+    return ("Recovery and approvals are not available in this configuration.", details)

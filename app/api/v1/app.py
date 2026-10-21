@@ -8,26 +8,27 @@ from __future__ import annotations
 
 import re
 import uuid
-from typing import Callable
+from typing import Any, Callable
 
 from fastapi import FastAPI, Request
 
 from app import __version__
 from app.api.v1.errors import install_error_handlers
-from app.api.v1.routes import approvals, health, incidents, recoveries, tickets
+from app.api.v1.routes import approvals, dashboard, demo, health, incidents, ledger, recoveries, reviews, simulator, tickets
 from app.api.v1.security import ServicesProvider
 from app.services.container import Services
 
 _CLIENT_ID = re.compile(r"^[A-Za-z0-9_.-]{8,64}$")
 
 
-def create_api_app(services_factory: Callable[[], Services]) -> FastAPI:
+def create_api_app(services_factory: Callable[[], Services], sim_repository_factory: Callable[[], Any] | None = None) -> FastAPI:
     api = FastAPI(
         title="AI DataOps Agent API", version=__version__,
         description="Incident investigation, persistence, ticketing and human-approved, VSL-governed recovery. "
                     "Authentication: `Authorization: Bearer <token>`. Local development authentication only; "
                     "see docs/phase8-api-persistence-ticketing.md for production prerequisites.")
     api.state.provider = ServicesProvider(services_factory)
+    api.state.sim_repository_factory = sim_repository_factory  # read access to the simulator DB (None = not configured)
     install_error_handlers(api)
 
     @api.middleware("http")
@@ -38,6 +39,6 @@ def create_api_app(services_factory: Callable[[], Services]) -> FastAPI:
         response.headers["X-Request-ID"] = request.state.request_id
         return response
 
-    for module in (health, incidents, approvals, recoveries, tickets):
+    for module in (health, incidents, approvals, recoveries, tickets, ledger, simulator, demo, reviews, dashboard):
         api.include_router(module.router)
     return api

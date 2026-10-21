@@ -41,3 +41,6 @@ Thumbs.db
 
 # Local verification evidence
 phase2-evidence-backup/
+
+# Local development launcher state (generated tokens and logs; never commit)
+.dev/

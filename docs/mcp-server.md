@@ -143,6 +143,63 @@ Windows, and any real MCP client (Claude Desktop, Inspector). Expected local res
 from plain `pytest` (more skips on Windows only if the symlink test skips: 354 passed, 31 skipped), and 30 passed
 from `pytest tests/integration -v -rs` with the gate set. Replace this paragraph with your actual numbers.
 
+## Phase 10 tools (server version 0.5.0)
+
+Three read-only tools were added, taking the server from eight to eleven. They are deliberately **not** part of
+`run_all_diagnostics`, whose output is unchanged. Each reads the simulation database through the same
+`ReadOnlyRepo` allow-list as the Phase 3 tools, so none of them can write, and none takes free text, SQL, a path or
+a shell command. Every call runs in a worker thread, returns the standard `DiagnosticResult` structure
+(`status`, `severity`, `summary`, `evidence`, `error_code`, `recommended_next_step`), and turns bad input, an
+unseeded or unreachable database and unexpected faults into structured errors (`DIAG-INVALID-INPUT`,
+`DIAG-NOT-SEEDED`, `DIAG-DB-ERROR`, `DIAG-INTERNAL`) instead of exceptions. Unknown argument names are refused by the
+server middleware. The agent client's call timeout applies. All three are annotated read-only, idempotent and
+closed-world, so the agent's approved-tool check admits them.
+
+Common to all three: **permissions** - the stdio server has no per-client permissions; the boundary is the
+read-only repository and the approved-tool list in `app/agent/mcp_client.py`. **Data boundary** - the simulation
+database only (no operations SQLite, no ledger, no GitHub, no environment values). **VSL governance** - none is
+needed because nothing consequential can happen; a tool call is evidence for an investigation and is recorded by the
+existing agent/investigation flow like any other read-only call. **Tests** - `tests/test_phase10_mcp_tools.py` plus
+the pinned-catalogue tests in `tests/test_mcp_server.py`, `tests/test_agent_mcp.py` and `tests/test_agent_unit.py`.
+
+### `get_pipeline_run_statistics`
+
+* **Purpose:** summarise the last `window` runs per pipeline: status counts, success rate, consecutive-failure
+  streak, and last/mean/median/max duration (only runs with a recorded `duration_ms`).
+* **Input:** `pipeline_id` (optional, validated identifier, must be a known pipeline) and `window` (strict integer
+  1-100, default 20).
+* **Output:** `DiagnosticResult` whose evidence `pipeline_statistics` lists one entry per pipeline. A streak of two
+  or more failures is `issue_detected`; one failure, a duration more than twice the median of earlier runs
+  (needs at least three earlier samples) or a success rate below 80% is a `warning`; no runs is a low-severity
+  `warning`. It reports counts and never a cause.
+
+### `summarize_recent_errors`
+
+* **Purpose:** group recent `failed` and `warning` runs by pipeline and error code, with counts, up to ten run ids
+  per group and one redacted, truncated sample message.
+* **Input:** `limit` (strict integer 1-100, default 20).
+* **Output:** `DiagnosticResult` with evidence `error_groups`. Any failed run gives `issue_detected`; only warnings
+  give `warning`; none gives `ok`. Error text goes through the same redaction as the log tool and is data, not
+  instructions.
+
+### `check_diagnostics_health`
+
+* **Purpose:** confirm that the database behind the diagnostics is reachable, seeded and passes its integrity
+  checks, so a failing investigation can be told apart from a broken tool.
+* **Input:** none.
+* **Output:** `DiagnosticResult` with evidence `database` (reachable, seeded, simulated time), `table_counts` and
+  `integrity_problems` (count and up to twenty redacted lines). Problems give `issue_detected`; an unreachable or
+  unseeded database gives the standard structured error. Connection strings and credentials are never included.
+
+### Considered and deferred
+
+* **A ticket or GitHub MCP tool.** The diagnostics server is a subprocess with simulation-database access only.
+  A ticket tool would give it the operations store and GitHub credentials, widening its data boundary for little
+  gain, because tickets are already readable and manageable through the authenticated API under its permissions.
+  Deferred; if added later it must be read-only and run inside the API process.
+* **Any recovery, approval or ledger-write tool, and any SQL or shell tool.** Not provided. Recovery stays on the
+  Phase 7 governed path (proposal, VSL gate, human approval, bound execution) and is never reachable from MCP.
+
 ## Limitations
 
 * Stdio only. No HTTP/SSE transport, authentication, rate limiting or per-client permissions (not needed for a
@@ -155,4 +212,4 @@ from `pytest tests/integration -v -rs` with the gate set. Replace this paragraph
   the tools report its effects (see [diagnostics.md](diagnostics.md)).
 * Resources and prompts are not exposed; tools only.
 * The Phase 5 agent ([agent.md](agent.md)) is the first real client: it discovers these tools at runtime, calls only the
-  eight approved read-only ones and validates arguments against the published schemas before calling.
+  approved read-only ones (eight in Phase 5, eleven since Phase 10) and validates arguments against the published schemas before calling.

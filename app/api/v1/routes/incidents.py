@@ -58,8 +58,11 @@ async def create_incident(body: IncidentCreate, response: Response, caller: Call
 async def list_incidents(limit: int = Query(20, ge=1, le=100), offset: int = Query(0, ge=0),
                          status: Literal["new", "investigating", "investigated", "investigation_failed"] | None = None,
                          severity: Literal["low", "medium", "high", "critical"] | None = None,
+                         q: str | None = Query(None, min_length=1, max_length=100, description="Search id, title, description, external reference"),
+                         origin: Literal["simulator"] | None = Query(None, description="simulator = incidents imported from the SQL Server simulator"),
                          _: Caller = Depends(require("incident:read")), services: Services = Depends(get_services)) -> Page[IncidentOut]:
-    rows, total = services.store.list_incidents(status=status, severity=severity, limit=limit, offset=offset)
+    rows, total = services.store.list_incidents(status=status, severity=severity, limit=limit, offset=offset, q=q,
+                                                external_ref_prefix="sim:" if origin == "simulator" else None)
     return Page(items=[incident_out(services, r) for r in rows], total=total, limit=limit, offset=offset)
 
 

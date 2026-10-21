@@ -1,0 +1,6 @@
+# Operations Dashboard and VerbaLedger Explorer (Phase 10) - UI-only dependencies, kept OUT of requirements.txt so the
+# API / Docker runtime image does not grow. Install AFTER requirements.txt:  pip install -r requirements-dashboard.txt
+# Verified together with the pinned API stack on Python 3.10 and 3.12 (pip check clean).
+streamlit==1.65.0
+plotly==7.1.0
+pandas==2.3.3

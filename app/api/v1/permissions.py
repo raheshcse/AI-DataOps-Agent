@@ -16,14 +16,15 @@ READ = frozenset({"incident:read", "investigation:read", "approval:read", "recov
 INVESTIGATE = frozenset({"incident:create", "investigation:run"})
 OPERATE = frozenset({"recovery:request", "recovery:resume", "ticket:manage"})
 DECIDE = frozenset({"approval:decide"})
+LEDGER = frozenset({"ledger:read"})  # read-only VerbaLedger Explorer API; a separate boundary
 
 API_PERMISSIONS: dict[str, frozenset[str]] = {
-    "api_reader": READ,
-    "viewer": READ,
+    "api_reader": READ | LEDGER,
+    "viewer": READ | LEDGER,
     "investigator": READ | INVESTIGATE,
     "operator": READ | INVESTIGATE | OPERATE,
-    "recovery_approver": READ | DECIDE,
-    "recovery_admin": READ | DECIDE,
+    "recovery_approver": READ | DECIDE | LEDGER,
+    "recovery_admin": READ | DECIDE | LEDGER,
     "governance_authority": frozenset(),
 }
 

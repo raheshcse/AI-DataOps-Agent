@@ -27,6 +27,7 @@ RunId = Annotated[str, Field(
 RunStatus = Literal[RUN_STATUSES]  # type: ignore[valid-type]
 FeedTable = Literal[ALLOWED_TABLES]  # type: ignore[valid-type]
 Limit = Annotated[int, Field(strict=True, ge=1, le=100, description="How many runs of history to return (1-100).")]
+Window = Annotated[int, Field(strict=True, ge=1, le=100, description="How many recent runs per pipeline to analyse (1-100).")]
 MaxEvents = Annotated[int, Field(strict=True, ge=1, le=1000, description="Maximum log events to return (1-1000).")]
 BatchDate = Annotated[str, Field(
     pattern=r"^\d{4}-\d{2}-\d{2}$", description="ISO batch date, YYYY-MM-DD. Defaults to the current batch.")]

@@ -108,3 +108,5 @@ pipeline logic, database access and API routes separate.
   adapter, mounted at `/api/v1`. Recovery is reachable only through the Phase 7 approval workflow. See [phase8-api-persistence-ticketing.md](phase8-api-persistence-ticketing.md).
 - `app/core/startup.py`, `Dockerfile`, `docker-compose.yml`, `.github/workflows/ci.yml` – Phase 9 production start-up validation, single-host
   container image and CI. See [phase9-end-to-end-validation-cloud-infrastructure.md](phase9-end-to-end-validation-cloud-infrastructure.md).
+- `dashboard/` – Phase 10 Streamlit apps (Operations Dashboard, separate read-only VerbaLedger Explorer) that use only the HTTP API; `app/governance/ledger_view.py` and
+  `app/api/v1/routes/ledger.py` – the read-only ledger API; `app/diagnostics/tools/operations.py` – three added read-only MCP tools. See [phase10-operations-dashboard-verbaledger-mcp.md](phase10-operations-dashboard-verbaledger-mcp.md).

@@ -95,6 +95,12 @@ class InMemoryRepo:
                 "stg_order_feed": sum(1 for f in self.feed if f.get("scenario_id")),
                 "incident_records": sum(1 for i in self.incidents if i.get("scenario_id"))}
 
+    def demo_row_counts(self):
+        like = lambda rid: str(rid).startswith("RUN-DEMO-")  # noqa: E731
+        return {"pipeline_runs": sum(1 for r in self.runs if like(r["run_id"])),
+                "validation_results": sum(1 for v in self.vals if like(v["run_id"])),
+                "incident_records": sum(1 for i in self.incidents if like(i.get("run_id")))}
+
     def wipe(self):
         counts = {k: v for k, v in self.table_counts().items()}
         self._clear()

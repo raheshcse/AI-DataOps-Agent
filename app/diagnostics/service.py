@@ -33,6 +33,7 @@ from app.diagnostics.tools import (
     duplicates,
     freshness,
     logs as log_tool,
+    operations,
     quality,
     reconciliation,
     schema_contract,
@@ -48,6 +49,7 @@ TOOL_NAMES = (
     status.NAME, log_tool.NAME, duplicates.NAME, quality.NAME, freshness.NAME,
     reconciliation.NAME, schema_contract.NAME,
 )
+OPERATIONS_TOOL_NAMES = (operations.STATS_NAME, operations.ERRORS_NAME, operations.HEALTH_NAME)
 
 
 class DiagnosticsService:
@@ -112,6 +114,19 @@ class DiagnosticsService:
         params = {"table": table}
         return self._run(schema_contract.NAME, params,
                          lambda s, now: schema_contract.validate_schema_contract(self.repo, table))
+
+    # ------------------------------------------------- Phase 10 operations tools (not in run_all)
+    def get_pipeline_run_statistics(self, pipeline_id: str | None = None, window: int = 20) -> DiagnosticResult:
+        params = {"pipeline_id": pipeline_id, "window": window}
+        return self._run(operations.STATS_NAME, params,
+                         lambda s, now: operations.get_pipeline_run_statistics(self.repo, pipeline_id, window))
+
+    def summarize_recent_errors(self, limit: int = 20) -> DiagnosticResult:
+        return self._run(operations.ERRORS_NAME, {"limit": limit},
+                         lambda s, now: operations.summarize_recent_errors(self.repo, limit))
+
+    def check_diagnostics_health(self) -> DiagnosticResult:
+        return self._run(operations.HEALTH_NAME, {}, lambda s, now: operations.check_diagnostics_health(self.repo, now))
 
     # ------------------------------------------------------------------- roll-up
     def run_all(self, batch_date: date | str | None = None) -> DiagnosticReport:

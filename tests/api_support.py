@@ -173,7 +173,7 @@ def build_api(tmp_path: Path, *, name: str = "a", github: FakeGitHub | None = No
     if services.recoveries:
         services.recoveries.reconcile_all()
     parent = FastAPI()
-    parent.mount("/api/v1", create_api_app(lambda: services))  # exactly how app.main mounts it
+    parent.mount("/api/v1", create_api_app(lambda: services, sim_repository_factory=lambda: env.sim.repo))  # exactly how app.main mounts it
     client = TestClient(parent, raise_server_exceptions=False)
     client.__enter__()
     return ApiEnv(client, services, env, store, github, ops_path, tmp_path)

@@ -253,9 +253,15 @@ class SimulationService:
         add("integrity", "no scenario-tagged rows", not tagged, str(tagged) if tagged else "none")
         if strict:
             expected = generate_baseline(self.seed_value, self.threshold).expected_counts()
+            demo = self.repo.demo_row_counts()  # synthetic demo incidents are additive, so they are not baseline drift
             for table, want in expected.items():
                 got = counts.get(table)
-                add("baseline", f"row count {table}", got == want, f"expected {want}, found {got}")
+                extra = demo.get(table, 0)
+                got_baseline = None if got is None else got - extra
+                add("baseline", f"row count {table}", got_baseline == want,
+                    f"expected {want}, found {got_baseline}" + (f" (+{extra} synthetic demo rows, reported separately)" if extra else ""))
+            add("integrity", "synthetic demo incidents (informational)", True,
+                f"{demo.get('incident_records', 0)} present" if demo.get("incident_records") else "none seeded")
             add("baseline", "simulated clock at baseline anchor",
                 bool(state) and state["sim_now"] == ANCHOR_NOW,
                 f"found {state['sim_now'].isoformat() if state else None}")

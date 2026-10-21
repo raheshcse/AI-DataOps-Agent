@@ -134,9 +134,16 @@ class OperationsStore:
         with self._read() as conn:
             return _row(conn.execute("SELECT * FROM incidents WHERE incident_id = ?", (incident_id,)).fetchone())
 
-    def list_incidents(self, *, status: str | None, severity: str | None, limit: int, offset: int
-                       ) -> tuple[list[dict[str, Any]], int]:
+    def list_incidents(self, *, status: str | None, severity: str | None, limit: int, offset: int,
+                       q: str | None = None, external_ref_prefix: str | None = None) -> tuple[list[dict[str, Any]], int]:
         where, args = [], []
+        if q:  # bound parameter + escaped wildcards: user text is never part of the SQL string
+            like = "%" + q.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%"
+            where.append("(incident_id LIKE ? ESCAPE '\\' OR title LIKE ? ESCAPE '\\' OR description LIKE ? ESCAPE '\\' OR external_ref LIKE ? ESCAPE '\\')")
+            args.extend([like, like, like, like])
+        if external_ref_prefix:
+            where.append("external_ref LIKE ? ESCAPE '\\'")
+            args.append(external_ref_prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%")
         if status:
             where.append("status = ?"); args.append(status)
         if severity:
@@ -299,6 +306,34 @@ class OperationsStore:
         with self._read() as conn:
             rows = conn.execute("SELECT * FROM recoveries WHERE status='resuming'").fetchall()
         return [self._rec(_row(r)) for r in rows]
+
+    # ---- read-only views used by the Phase 10 dashboard / human-review API (SELECT only)
+    def get_incident_by_external_ref(self, external_ref: str) -> dict[str, Any] | None:
+        with self._read() as conn:
+            return _row(conn.execute("SELECT * FROM incidents WHERE external_ref = ?", (external_ref,)).fetchone())
+
+    def external_refs(self, prefix: str, limit: int = 1000) -> dict[str, str]:
+        """``{external_ref: incident_id}`` for incidents whose reference starts with ``prefix`` (bounded)."""
+        with self._read() as conn:
+            rows = conn.execute("SELECT external_ref, incident_id FROM incidents WHERE external_ref LIKE ? ESCAPE '\\' LIMIT ?",
+                                (prefix.replace("\\", "\\\\").replace("%", "\\%").replace("_", "\\_") + "%", limit)).fetchall()
+        return {r["external_ref"]: r["incident_id"] for r in rows}
+
+    def recent_recoveries(self, limit: int = 500) -> list[dict[str, Any]]:
+        with self._read() as conn:
+            rows = conn.execute("SELECT * FROM recoveries ORDER BY created_at DESC, recovery_id DESC LIMIT ?", (limit,)).fetchall()
+        return [self._rec(_row(r)) for r in rows]
+
+    def counts(self) -> dict[str, dict[str, int]]:
+        """Group counts straight from the stored rows (nothing is cached or estimated)."""
+        out: dict[str, dict[str, int]] = {}
+        queries = {"incidents_by_status": ("incidents", "status"), "incidents_by_severity": ("incidents", "severity"),
+                   "incidents_by_type": ("incidents", "incident_type"), "investigations_by_status": ("investigations", "status"),
+                   "recoveries_by_status": ("recoveries", "status"), "tickets_by_status": ("ticket_associations", "status")}
+        with self._read() as conn:
+            for key, (table, column) in queries.items():
+                out[key] = {str(r[0]): int(r[1]) for r in conn.execute(f"SELECT {column}, COUNT(*) FROM {table} GROUP BY {column}")}
+        return out
 
     @staticmethod
     def _rec(row: dict[str, Any] | None) -> dict[str, Any] | None:

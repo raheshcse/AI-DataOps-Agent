@@ -30,6 +30,7 @@ PROJECT_ROOT = Path(__file__).resolve().parents[2]
 APPROVED_TOOLS = frozenset({
     "get_pipeline_status", "inspect_pipeline_logs", "detect_duplicate_records", "diagnose_data_quality",
     "check_data_freshness", "reconcile_record_counts", "validate_schema_contract", "run_all_diagnostics",
+    "get_pipeline_run_statistics", "summarize_recent_errors", "check_diagnostics_health",
 })
 REPORT_TOOLS = frozenset({"run_all_diagnostics"})  # return a roll-up (``results``) instead of one result
 _RESULT_KEYS = {"diagnostic_name", "status", "severity", "summary"}

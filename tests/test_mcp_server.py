@@ -71,10 +71,13 @@ def expect_structured(result, *, error: bool):
 
 
 # ---------------------------------------------------------------------------- discovery
-def test_server_exposes_exactly_the_eight_diagnostic_tools(server):
+PHASE10_TOOLS = {"get_pipeline_run_statistics", "summarize_recent_errors", "check_diagnostics_health"}
+
+
+def test_server_exposes_the_eight_original_tools_plus_the_three_phase_10_tools(server):
     names = [t.name for t in list_tools(server)]
-    assert sorted(names) == sorted(TOOL_CATALOGUE) and len(names) == 8
-    assert set(TOOL_NAMES) | {"run_all_diagnostics"} == set(names)  # every Phase 3 tool, nothing else
+    assert sorted(names) == sorted(TOOL_CATALOGUE) and len(names) == 11
+    assert set(TOOL_NAMES) | {"run_all_diagnostics"} | PHASE10_TOOLS == set(names)  # nothing else
 
 
 def test_every_tool_is_described_read_only_and_has_an_output_schema(server):

@@ -35,12 +35,13 @@ from app.mcp_server.schemas import (
     PipelineId,
     RunId,
     RunStatus,
+    Window,
 )
 
 logger = logging.getLogger("app.mcp_server")
 
 SERVER_NAME = "dataops-diagnostics"
-SERVER_VERSION = "0.4.0"
+SERVER_VERSION = "0.5.0"
 
 INSTRUCTIONS = (
     "Read-only diagnostics for the DataOps simulation database. Each tool inspects pipeline runs, logs, "
@@ -63,6 +64,9 @@ TOOL_CATALOGUE = {
     "reconcile_record_counts": "Feed rows vs run metadata vs logs vs orders for one batch.",
     "validate_schema_contract": "Observed feed-table columns against the expected contract.",
     "run_all_diagnostics": "All of the above that need no run id, plus the latest run's log.",
+    "get_pipeline_run_statistics": "Per-pipeline success rate, failure streak and duration statistics.",
+    "summarize_recent_errors": "Recent failed/warning runs grouped by pipeline and error code.",
+    "check_diagnostics_health": "Database reachability, seeding and integrity behind the diagnostics.",
 }
 
 
@@ -143,6 +147,28 @@ def create_server(provider: ServiceProvider | None = None) -> MCPServer:
         params = {"pipeline_id": pipeline_id, "status": status, "limit": limit}
         return await run_diagnostic("get_pipeline_status", params,
                              lambda s: s.get_pipeline_status(pipeline_id, status, limit))
+
+    @tool("get_pipeline_run_statistics")
+    async def get_pipeline_run_statistics(pipeline_id: PipelineId | None = None,
+                                          window: Window = 20) -> DiagnosticResultModel:
+        """Summarise recent runs per pipeline: status counts, success rate, failure streak, duration statistics.
+
+        Reports what was recorded in the last `window` runs (1-100); it does not identify a cause.
+        """
+        params = {"pipeline_id": pipeline_id, "window": window}
+        return await run_diagnostic("get_pipeline_run_statistics", params,
+                                    lambda s: s.get_pipeline_run_statistics(pipeline_id, window))
+
+    @tool("summarize_recent_errors")
+    async def summarize_recent_errors(limit: Limit = 20) -> DiagnosticResultModel:
+        """Group recent failed/warning runs by pipeline and error code, with counts and a redacted sample message."""
+        return await run_diagnostic("summarize_recent_errors", {"limit": limit},
+                                    lambda s: s.summarize_recent_errors(limit))
+
+    @tool("check_diagnostics_health")
+    async def check_diagnostics_health() -> DiagnosticResultModel:
+        """Check that the simulation database behind the diagnostics is reachable, seeded and internally consistent."""
+        return await run_diagnostic("check_diagnostics_health", {}, lambda s: s.check_diagnostics_health())
 
     @tool("inspect_pipeline_logs")
     async def inspect_pipeline_logs(run_id: RunId, max_events: MaxEvents = 200) -> DiagnosticResultModel:

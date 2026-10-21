@@ -33,6 +33,9 @@ _KEYWORD_TOOLS: list[tuple[re.Pattern[str], list[str]]] = [
      ["get_pipeline_status"]),
 ]
 _RUN_REF = re.compile(r"^run:(\S{1,100})$")
+# A run id named in the incident text (for example an imported simulator incident). Untrusted text can only make the planner
+# READ that run's log: the id is matched by this strict pattern and re-validated and path-confined by the log tool itself.
+_RUN_IN_TEXT = re.compile(r"\bRUN-[A-Za-z0-9][A-Za-z0-9_.-]{2,70}")
 
 
 def _key(tool: str, arguments: dict[str, Any]) -> str:
@@ -69,7 +72,14 @@ class OfflineHeuristicModel:
             if not matched:
                 tools = ["run_all_diagnostics"]
             wanted = [(t, {}) for t in tools]
-            reason = "Round 1: tools chosen by keyword rules from the incident text."
+            named: list[str] = []
+            for m in _RUN_IN_TEXT.finditer(incident):
+                rid = m.group(0).rstrip(".-_")
+                if rid not in named:
+                    named.append(rid)
+            wanted += [("inspect_pipeline_logs", {"run_id": rid}) for rid in named[:2]]
+            reason = "Round 1: tools chosen by keyword rules from the incident text" + (
+                "; the log of the run named in the incident is also inspected." if named else ".")
         else:
             run_ids: list[str] = []
             for item in evidence:

@@ -9,6 +9,7 @@ from fastapi.responses import JSONResponse
 from pydantic import ValidationError
 
 from app import __version__
+from app.api.openapi_merge import install_merged_openapi
 from app.api.simulation import router as simulation_router
 from app.api.v1 import create_api_app
 from app.config import get_settings
@@ -49,8 +50,16 @@ def _build_services():
     return build_services()
 
 
+def _sim_repository():
+    from app.api.simulation import get_repository
+
+    return get_repository()
+
+
 # Phase 8: the versioned API is a mounted sub-application; services are built lazily on first use.
-app.mount("/api/v1", create_api_app(_build_services))
+_api_v1 = create_api_app(_build_services, sim_repository_factory=_sim_repository)
+app.mount("/api/v1", _api_v1)
+install_merged_openapi(app, "/api/v1", _api_v1)  # documentation only: lists /api/v1/* in /docs
 
 
 @app.middleware("http")

@@ -541,7 +541,10 @@ def test_the_agent_package_has_no_write_or_execution_calls():
             assert token not in source, f"{path.name} contains {token}"
 
 
-def test_only_the_eight_read_only_phase_4_tools_are_approved():
+def test_only_the_read_only_diagnostic_tools_are_approved():
     from app.mcp_server import TOOL_CATALOGUE
 
-    assert APPROVED_TOOLS == set(TOOL_CATALOGUE)
+    original = {"get_pipeline_status", "inspect_pipeline_logs", "detect_duplicate_records", "diagnose_data_quality",
+                "check_data_freshness", "reconcile_record_counts", "validate_schema_contract", "run_all_diagnostics"}
+    phase10 = {"get_pipeline_run_statistics", "summarize_recent_errors", "check_diagnostics_health"}
+    assert APPROVED_TOOLS == set(TOOL_CATALOGUE) == original | phase10

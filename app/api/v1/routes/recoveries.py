@@ -3,15 +3,15 @@ happens solely inside the Phase 7 workflow after an authenticated human approval
 
 from __future__ import annotations
 
-from fastapi import APIRouter, Depends, Path, Response
+from fastapi import APIRouter, Depends, Path, Query, Response
 
 from app.api.v1.errors import ApiError
 from app.api.v1.mappers import recovery_out
 from app.api.v1.routes.incidents import IncidentId, incident_or_404
-from app.api.v1.schemas import RecoveryOut, RecoveryRequestIn
+from app.api.v1.schemas import Page, RecoveryOut, RecoveryRequestIn
 from app.api.v1.security import Caller, get_services, require
 from app.persistence import RecoveryActive
-from app.services.container import Services
+from app.services.container import Services, recovery_unavailable_info
 from app.services.recoveries import NoRecoverySuggested, RecoveryService
 
 router = APIRouter(tags=["recoveries"])
@@ -19,8 +19,8 @@ router = APIRouter(tags=["recoveries"])
 
 def _recoveries(services: Services) -> RecoveryService:
     if services.recoveries is None:
-        raise ApiError(503, "recovery_unavailable", "Recovery is not available in this configuration.",
-                       details={"reason": services.recovery_unavailable})
+        message, details = recovery_unavailable_info(services)
+        raise ApiError(503, "recovery_unavailable", message, details=details)
     return services.recoveries
 
 
@@ -46,6 +46,15 @@ async def request_recovery(response: Response, body: RecoveryRequestIn | None = 
     if row["status"] != "awaiting_approval":
         response.status_code = 409
     return recovery_out(services, row)
+
+
+@router.get("/recoveries", response_model=Page[RecoveryOut])
+async def list_all_recoveries(limit: int = Query(25, ge=1, le=100), offset: int = Query(0, ge=0, le=10000),
+                              status: str | None = Query(None, pattern=r"^[a-z_]{3,40}$"),
+                              _: Caller = Depends(require("recovery:read")), services: Services = Depends(get_services)) -> Page[RecoveryOut]:
+    """Recent recoveries across incidents (summary rows; fetch one for governance detail)."""
+    rows = [r for r in services.store.recent_recoveries(500) if status is None or r["status"] == status]
+    return Page(items=[recovery_out(services, r, detail=False) for r in rows[offset:offset + limit]], total=len(rows), limit=limit, offset=offset)
 
 
 @router.get("/incidents/{incident_id}/recoveries", response_model=list[RecoveryOut])

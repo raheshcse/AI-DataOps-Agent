@@ -54,7 +54,7 @@ def snapshot(repo):
 
 
 # =================================================================================== discovery
-def test_the_toolbox_discovers_exactly_the_eight_approved_tools_with_their_schemas(server):
+def test_the_toolbox_discovers_the_approved_tools_with_their_schemas(server):
     async def inspect(tb):
         return tb.tools, tb.ignored_tools, tb.missing_tools
 
@@ -301,7 +301,7 @@ def test_the_agent_survives_the_planner_asking_for_every_tool_and_never_writes(s
     before = snapshot(service.repo)
     run_id = service.repo.list_runs(None, 1)[0]["run_id"]
     calls = [tc(t) for t in sorted(TOOL_CATALOGUE) if t != "inspect_pipeline_logs"] + [tc("inspect_pipeline_logs", run_id=run_id)]
-    report = run_agent(server, "check everything", ScriptedModel([plan(*calls[:4]), plan(*calls[4:]), FINISH]), max_tool_calls=12)
+    report = run_agent(server, "check everything", ScriptedModel([plan(*calls[:4]), plan(*calls[4:8]), plan(*calls[8:]), FINISH]), max_tool_calls=12)
     assert snapshot(service.repo) == before and report.tool_calls_used == len(calls)
     assert report.status == "issue_identified"
 

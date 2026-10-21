@@ -120,6 +120,18 @@ class SqlRepository:
                                       .where(t.c.scenario_id.is_not(None))).scalar_one()
                     for t in (s.orders, s.stg_order_feed, s.incident_records)}
 
+    def demo_row_counts(self) -> dict[str, int]:
+        """Rows added by the synthetic demo seeder (runs whose id starts ``RUN-DEMO-``), so strict verification can tell
+        them apart from baseline drift. Read-only."""
+        like = "RUN-DEMO-%"
+        with self.engine.connect() as c:
+            runs = c.execute(select(func.count()).select_from(s.pipeline_runs).where(s.pipeline_runs.c.run_id.like(like))).scalar_one()
+            vals = c.execute(select(func.count()).select_from(s.validation_results)
+                             .where(s.validation_results.c.run_id.like(like))).scalar_one()
+            incs = c.execute(select(func.count()).select_from(s.incident_records)
+                             .where(s.incident_records.c.run_id.like(like))).scalar_one()
+        return {"pipeline_runs": runs, "validation_results": vals, "incident_records": incs}
+
     def wipe(self) -> dict[str, int]:
         deleted = {}
         with self.engine.begin() as c:
